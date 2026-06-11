@@ -1,0 +1,15 @@
+node_modules/
+.env
+*.log
+.DS_Store
+dist/
+coverage/
+.vscode/
+.idea/
+
+# Không đẩy module docs; cho phép README + hướng dẫn FE + database/
+*.md
+docs/
+!database/*.md
+!/README.md
+!/FRONTEND-INTEGRATION-GUIDE.md
