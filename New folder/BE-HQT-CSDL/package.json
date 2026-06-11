@@ -1,0 +1,34 @@
+{
+  "name": "backend-hqt",
+  "version": "1.0.0",
+  "description": "Backend API cho Hệ thống Quản lý Tài chính Nhà thuốc",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "keywords": [
+    "pharmacy",
+    "express",
+    "mssql",
+    "rest-api"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "groq-sdk": "^1.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "msnodesqlv8": "^5.2.0",
+    "mssql": "^12.5.4",
+    "openai": "^6.42.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
