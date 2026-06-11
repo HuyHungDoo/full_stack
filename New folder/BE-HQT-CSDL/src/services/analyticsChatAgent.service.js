@@ -584,372 +584,401 @@ function dataLagNote(latestDate, refDate) {
   return ''
 }
 
-function summarizeTopProducts(rows, range, latestDate) {
-  const lag = dataLagNote(latestDate, range.endDate)
-  if (!rows?.length) {
-    return `Chưa có dữ liệu sản phẩm bán chạy trong khoảng ${range.startDate} đến ${range.endDate}.${lag}`
-  }
-  const lines = rows.slice(0, 5).map((item, i) => {
+// ─── Summarizers — thay thế toàn bộ các hàm summarize hiện có ───────────────
+
+function summarizeTopProducts(rows, range, sortBy = 'quantity') {
+  if (!rows?.length) return `Chưa có dữ liệu trong khoảng ${range.startDate} đến ${range.endDate}.`
+  const labelMap = { quantity: 'bán nhiều nhất', revenue: 'doanh thu cao nhất', profit: 'lợi nhuận cao nhất' }
+  const lines = rows.slice(0, 10).map((item, i) => {
     const name = item.productName || item.medicineName || item.productKey
-    return `${i + 1}. ${name}: ${quantity(item.quantitySold || item.quantity)} sp, doanh thu ${money(item.revenue)}, lợi nhuận ${money(item.profit)}`
+    return `${i + 1}. ${name}: ${quantity(item.quantitySold ?? item.quantity)} sp, DT ${money(item.revenue)}, LN ${money(item.profit)}`
   })
-  return `Top thuốc bán chạy (${range.label || `${range.startDate} → ${range.endDate}`}):${lag}\n${lines.join('\n')}`
+  return `Top thuốc ${labelMap[sortBy] || 'bán chạy'} (${range.startDate} → ${range.endDate}):\n${lines.join('\n')}`
 }
 
-function summarizeLowStock(rows, latestDate) {
-  if (!rows?.length) return 'Hiện chưa có sản phẩm tồn kho thấp theo snapshot mới nhất.'
-  const lines = rows.slice(0, 5).map((item, i) => {
+function summarizeLowStock(rows) {
+  if (!rows?.length) return 'Hiện chưa có sản phẩm tồn kho thấp.'
+  const lines = rows.slice(0, 10).map((item, i) => {
     const name = item.productName || item.medicineName || item.productKey
     return `${i + 1}. ${name}: còn ${quantity(item.currentQty)}, tối thiểu ${quantity(item.minStock)}, thiếu ${quantity(item.shortageQty)}`
   })
-  return `Các thuốc cần chú ý tồn kho (snapshot ${latestDate}):\n${lines.join('\n')}`
+  return `Thuốc cần chú ý tồn kho:\n${lines.join('\n')}`
 }
 
-function summarizeMatrixProducts(rows, abcClass, xyzClass, range, latestDate) {
-  const lag = dataLagNote(latestDate, range.endDate)
-  if (!rows?.length) {
-    return `Chưa có sản phẩm thuộc nhóm ${abcClass}${xyzClass} trong khoảng ${range.startDate} đến ${range.endDate}.${lag}`
-  }
+function summarizeMatrixProducts(rows, abcClass, xyzClass, range) {
+  if (!rows?.length) return `Chưa có sản phẩm nhóm ${abcClass}${xyzClass} trong khoảng ${range.startDate} → ${range.endDate}.`
   const lines = rows.slice(0, 10).map((item, i) => {
     const name = item.productName || item.medicineName || item.productKey
-    const stockText = item.currentQty !== undefined ? `, tồn ${quantity(item.currentQty)}` : ''
-    return `${i + 1}. ${name}: doanh thu ${money(item.revenue)}, bán ${quantity(item.quantitySold || item.quantity)}${stockText}`
+    const stock = item.currentQty !== undefined ? `, tồn ${quantity(item.currentQty)}` : ''
+    return `${i + 1}. ${name}: DT ${money(item.revenue)}, bán ${quantity(item.quantitySold ?? item.quantity)}${stock}`
   })
-  return `Sản phẩm nhóm ${abcClass}${xyzClass} (${range.label || `${range.startDate} → ${range.endDate}`}):${lag}\n${lines.join('\n')}`
+  return `Sản phẩm nhóm ${abcClass}${xyzClass} (${range.startDate} → ${range.endDate}):\n${lines.join('\n')}`
 }
 
-function summarizeSales(data, range, latestDate) {
-  const lag = dataLagNote(latestDate, range.endDate)
+function summarizeSales(data) {
   const revenue = data?.metrics?.revenue
-  const orders = data?.metrics?.orders
-  const profit = data?.metrics?.profit
-  const aov = data?.metrics?.aov
-  const delta = revenue?.deltaPercent == null
+  const orders  = data?.metrics?.orders
+  const profit  = data?.metrics?.profit
+  const delta   = revenue?.deltaPercent == null
     ? 'chưa đủ dữ liệu kỳ so sánh'
-    : `${revenue.deltaPercent > 0 ? '+' : ''}${revenue.deltaPercent}% so với kỳ trước`
-  const lines = [
-    `Doanh thu ${range.label || `${range.startDate} → ${range.endDate}`}: ${money(revenue?.current)}, ${delta}.${lag}`,
-    `Số đơn: ${quantity(orders?.current)}. Lợi nhuận gộp: ${money(profit?.current)}.`,
-  ]
-  if (aov?.current != null) {
-    const aovDelta = aov.deltaPercent != null
-      ? ` (${aov.deltaPercent > 0 ? '+' : ''}${aov.deltaPercent}% so kỳ trước)`
-      : ''
-    lines.push(`AOV: ${money(aov.current)}${aovDelta}.`)
-  }
-  return lines.join('\n')
+    : `${revenue.deltaPercent >= 0 ? '+' : ''}${revenue.deltaPercent}% so với kỳ trước`
+  return `Doanh thu: ${money(revenue?.current)} (${delta}). Số đơn: ${quantity(orders?.current)}. Lợi nhuận: ${money(profit?.current)}.`
 }
 
-// ─── Intent classification ────────────────────────────────────────────────────
+// BUG-1/2/3: summarizeTrend tính % đúng từ first→last, không lấy từ getSalesSummary
+function summarizeTrend(rows, metric) {
+  if (!rows?.length) return 'Chưa có dữ liệu xu hướng.'
+  const labelMap = { revenue: 'Doanh thu', orders: 'Số đơn', aov: 'AOV' }
+  const label    = labelMap[metric] || 'Giá trị'
+  const getVal   = r => metric === 'orders' ? r.orders : metric === 'aov' ? r.aov : r.revenue
+  const fmtVal   = v => (metric === 'revenue' || metric === 'aov') ? money(v) : quantity(v)
+
+  const firstVal = getVal(rows[0])
+  const lastVal  = getVal(rows[rows.length - 1])
+  // BUG-2 fix: tính chiều đúng — lastVal so với firstVal
+  const pct = firstVal > 0 ? (((lastVal - firstVal) / firstVal) * 100).toFixed(1) : null
+  const trend = pct !== null ? ` (${Number(pct) >= 0 ? '+' : ''}${pct}% từ đầu đến cuối kỳ)` : ''
+
+  const lines = rows.map(r => `  ${r.period}: ${fmtVal(getVal(r))}`)
+  return `${label} theo kỳ${trend}:\n${lines.join('\n')}`
+}
+
+// BUG-8: stock loss theo đúng groupBy
+function summarizeStockLoss(rows, groupBy) {
+  if (!rows?.length) return 'Chưa có dữ liệu hủy hàng / thất thoát trong kỳ.'
+  const labelMap = { category: 'nhóm sản phẩm', product: 'sản phẩm', month: 'tháng' }
+  const lines = rows.slice(0, 10).map((r, i) =>
+    `${i + 1}. ${r.groupName || r.key}: ${quantity(r.lossQty)} sp, giá trị hủy ${money(r.lossValue)}`
+  )
+  return `Hủy hàng theo ${labelMap[groupBy] || groupBy}:\n${lines.join('\n')}`
+}
+
+// BUG-6: inventory value có breakdown
+function summarizeInventoryValue(data) {
+  if (!data?.groups?.length) return 'Chưa có dữ liệu giá trị tồn kho.'
+  const lines = data.groups.map((g, i) =>
+    `${i + 1}. ${g.name}: ${quantity(g.currentQty)} sp, giá trị ${money(g.inventoryValue)} (${g.sharePercent}%)`
+  )
+  return `Giá trị tồn kho (tổng ${money(data.totalValue)}):\n${lines.join('\n')}`
+}
+
+// BUG-5: sort category theo % tăng trưởng
+function summarizeCategoryGrowth(rows) {
+  if (!rows?.length) return 'Chưa có dữ liệu tăng trưởng danh mục.'
+  const sorted = [...rows]
+    .filter(r => r.previousRevenue > 0)
+    .sort((a, b) => (b.revenueChangePercent ?? -Infinity) - (a.revenueChangePercent ?? -Infinity))
+  if (!sorted.length) return 'Chưa đủ dữ liệu kỳ trước để tính tăng trưởng.'
+  const lines = sorted.slice(0, 10).map((r, i) => {
+    const pct = r.revenueChangePercent != null ? `${r.revenueChangePercent >= 0 ? '+' : ''}${r.revenueChangePercent}%` : 'N/A'
+    return `${i + 1}. ${r.categoryName}: ${money(r.revenue)} (${pct}), LN ${money(r.profit)}`
+  })
+  return `Danh mục tăng trưởng tốt nhất (so với kỳ trước):\n${lines.join('\n')}`
+}
+
+// BUG-9/10: format matrix distribution rõ ràng thay vì JSON.stringify
+function summarizeMatrixDistribution(rows, range) {
+  if (!rows?.length) return 'Chưa có dữ liệu phân bố ma trận ABC/XYZ.'
+  const totalRevenue   = rows.reduce((s, r) => s + (r.revenue ?? 0), 0)
+  const totalInventory = rows.reduce((s, r) => s + (r.inventoryValue ?? 0), 0)
+
+  const byAbc = {}
+  for (const r of rows) {
+    if (!byAbc[r.abcClass]) byAbc[r.abcClass] = []
+    byAbc[r.abcClass].push(r)
+  }
+
+  const lines = []
+  for (const abc of ['A', 'B', 'C']) {
+    const cells = byAbc[abc] || []
+    if (!cells.length) continue
+    const abcRev   = cells.reduce((s, r) => s + (r.revenue ?? 0), 0)
+    const abcInv   = cells.reduce((s, r) => s + (r.inventoryValue ?? 0), 0)
+    const abcCount = cells.reduce((s, r) => s + (r.productCount ?? 0), 0)
+    const revShare = totalRevenue > 0 ? ((abcRev / totalRevenue) * 100).toFixed(1) : 0
+    lines.push(`Nhóm ${abc} — ${abcCount} SP, ${revShare}% doanh thu, tồn kho ${money(abcInv)}:`)
+    for (const cell of cells.sort((a, b) => a.xyzClass.localeCompare(b.xyzClass))) {
+      const invShare = totalInventory > 0 ? ((cell.inventoryValue ?? 0) / totalInventory * 100).toFixed(1) : 0
+      lines.push(`  ${abc}${cell.xyzClass}: ${cell.productCount} SP — DT ${money(cell.revenue)} (${(cell.revenueShare ?? 0).toFixed(1)}%), tồn kho ${money(cell.inventoryValue ?? 0)} (${invShare}%)`)
+    }
+  }
+  return `Phân bố ma trận ABC/XYZ (${range.startDate} → ${range.endDate}):\n${lines.join('\n')}`
+}
+
+// ─── Intent classifier — thay thế toàn bộ hàm classifyIntent ─────────────────
 
 function classifyIntent(normalized) {
-  const isProductContext = /thuoc|san pham|\bsp\b|hang hoa/.test(normalized)
-  const mentionsTop = /ban chay|top\b|cao nhat|nhieu nhat|hang dau/.test(normalized)
-  const mentionsProfit = /loi nhuan/.test(normalized)
-  const mentionsRevenue = /doanh thu|don hang|so don/.test(normalized)
+  // BUG-1 fix: matrix regex — loại false positive "ay" trong "gần đây"
+  // Chỉ chấp nhận [abc][xyz] khi đứng sau keyword hoặc đứng HOÀN TOÀN độc lập (word boundary cả 2 phía, không liền ký tự a-z)
+  const rawMatrixCell =
+    normalized.match(/(?:nhom|nhóm|groups?|matrix|o)\s+([abc])\s*([xyz])/) ||
+    normalized.match(/(?<![a-z])([abc])([xyz])(?![a-z])/)
 
-  const matrixCellMatch =
-    normalized.match(/(?:nhom|matrix)\s+([abc])\s*([xyz])/i) ||
-    normalized.match(/(?<![a-z])([abc])([xyz])(?![a-z])/i)
+  // Xác nhận lại: loại các match nằm giữa từ
+  const validMatrixCell = (() => {
+    if (!rawMatrixCell) return null
+    const matched = rawMatrixCell[0].trim()
+    const idx     = normalized.indexOf(matched)
+    const before  = idx > 0 ? normalized[idx - 1] : ' '
+    const after   = normalized[idx + matched.length]
+    if (/[a-z0-9]/.test(before) || (after && /[a-z0-9]/.test(after))) return null
+    return rawMatrixCell
+  })()
 
+  // BUG-9/10 fix: "phân bổ tồn kho theo ABC XYZ" → mentionsMatrixAnalysis
   const mentionsMatrixAnalysis =
     (normalized.includes('ma tran') || normalized.includes('abc') || normalized.includes('xyz')) &&
-    (normalized.includes('phan tich') || normalized.includes('phan bo') || normalized.includes('phan phoi') || normalized.includes('thong ke'))
+    (normalized.includes('phan tich') || normalized.includes('phan bo') ||
+     normalized.includes('phan phoi') || normalized.includes('thong ke') ||
+     normalized.includes('ton kho theo'))
 
-  // Tách rõ: "giá trị tồn kho" vs "tồn kho thấp/hết hàng"
+  // BUG-8 fix: detect hủy hàng/thất thoát chính xác
+  const isStockLossQuery =
+    normalized.includes('huy hang') || normalized.includes('that thoat') ||
+    normalized.includes('hang huy') || normalized.includes('hang hong') ||
+    normalized.includes('mat hang') ||
+    (normalized.includes('huy') && (normalized.includes('thuoc') || normalized.includes('nhom') || normalized.includes('san pham')))
+
+  // BUG-6 fix: tách "giá trị tồn kho" khỏi "tồn kho thấp/sắp hết"
   const mentionsInventoryValue =
-    /gia tri ton kho|inventory value|ton kho hien tai|ton kho theo/.test(normalized)
+    (normalized.includes('gia tri') && normalized.includes('ton kho')) ||
+    (normalized.includes('ton kho') && normalized.includes('danh muc')) ||
+    (normalized.includes('ton kho') && normalized.includes('theo') && !normalized.includes('abc') && !normalized.includes('xyz'))
 
   const mentionsLowStock =
-    !mentionsInventoryValue &&
-    /sap het|het hang|can chu y|ton kho thap|low stock|thieu hang/.test(normalized)
+    !mentionsInventoryValue && !isStockLossQuery && (
+      normalized.includes('sap het') ||
+      normalized.includes('het hang') ||
+      normalized.includes('can chu y') ||
+      (normalized.includes('ton kho') &&
+        !normalized.includes('gia tri') &&
+        !normalized.includes('theo') &&
+        !normalized.includes('abc') &&
+        !normalized.includes('xyz'))
+    )
 
-  const mentionsCategoryRevenue =
-    /danh muc|nhom (san pham|thuoc)|category/.test(normalized) &&
-    (mentionsRevenue || mentionsProfit || /tang truong|so sanh/.test(normalized))
+  // BUG-3 fix: "khách hàng" không phải product context; "hàng" chỉ tính nếu không trong cụm khác
+  const isProductContext = normalized.includes('thuoc') || normalized.includes('san pham') || normalized.includes('sp')
+  const hangIsProduct    = normalized.includes('hang') &&
+    !normalized.includes('khach hang') && !normalized.includes('huy hang') &&
+    !normalized.includes('that thoat') && !normalized.includes('hang hong')
 
-  const mentionsStockLoss =
-    /huy hang|hao hut|mat hang|xuat huy|stock loss|thua kien|bi huy|that thoat|tieu huy/.test(normalized)
+  const isCustomerContext  = normalized.includes('khach hang') || normalized.includes('khach')
+  // BUG-3 fix: "mua nhiều nhất" với khách hàng → frequency
+  const mentionsFrequency  = isCustomerContext &&
+    (normalized.includes('mua nhieu') || normalized.includes('tan suat') || normalized.includes('mua nhieu nhat'))
 
-  // Nhận diện intent tương lai → forecastRevenue (phải check TRƯỚC revenue summary)
-  const mentionsFuture =
-    /du bao|forecast|du kien|uoc tinh|co the dat|tuan sau|thang toi|nam toi|ngay toi|sap toi|tuong lai/.test(normalized)
+  // BUG-5 fix: "tăng trưởng" + nhóm/danh mục → getCategoryRevenue
+  const isCategoryContext =
+    normalized.includes('danh muc') ||
+    normalized.includes('nhom thuoc') ||
+    normalized.includes('theo nhom') ||
+    normalized.includes('nhom hang') ||
+    (normalized.includes('tang truong') && (normalized.includes('nhom') || normalized.includes('san pham')))
 
-  const mentionsCustomer =
-    /khach hang|customer/.test(normalized) &&
-    !/ban chay/.test(normalized)
+  // BUG-1/2/3 fix: trend intent — "xu hướng", "theo tháng", "gần đây", "AOV"
+  const isTrendQuery =
+    normalized.includes('xu huong') ||
+    normalized.includes('theo thang') ||
+    normalized.includes('theo tuan') ||
+    normalized.includes('thay doi') ||
+    normalized.includes('bien dong') ||
+    normalized.includes('gan day') ||
+    (normalized.includes('tu thang') && normalized.includes('den thang')) ||
+    normalized.includes('aov')
 
-  const mentionsTopCustomer =
-    /khach hang|customer/.test(normalized) &&
-    /top|nhieu nhat|cao nhat|hang dau/.test(normalized)
-
-  const mentionsAov = /\baov\b|gia tri don trung binh|average order/.test(normalized)
-
-  const mentionsTrend =
-    (/xu huong|trend|theo (thang|tuan|ngay)|bieu do/.test(normalized)) &&
-    (mentionsRevenue || mentionsAov)
-
-  // AOV standalone không có từ trend → vẫn route sang getSalesSummary (có metrics.aov)
-  const isAovQuery = mentionsAov && !mentionsTrend && !isTopProductsQuery
-
-  const isTopProductsQuery =
-    (mentionsTop && isProductContext) ||
-    (mentionsTop && (mentionsRevenue || mentionsProfit)) ||
-    (isProductContext && (mentionsRevenue || mentionsProfit) &&
-      !/tong|bao cao/.test(normalized))
-
-  const isRevenueSummaryQuery =
-    (mentionsRevenue || mentionsProfit || isAovQuery) &&
-    !isTopProductsQuery &&
-    !mentionsMatrixAnalysis &&
-    !mentionsCategoryRevenue &&
-    !mentionsTrend &&
-    !mentionsFuture
+  const isForecastQuery =
+    normalized.includes('du bao') || normalized.includes('forecast') ||
+    normalized.includes('du kien') || normalized.includes('co the dat')
 
   const isRFMQuery =
-  normalized.includes('rfm') ||
-  (normalized.includes('phan nhom') && normalized.includes('khach')) ||
-  (normalized.includes('phan khuc') && normalized.includes('khach')) ||
-  normalized.includes('recency') || normalized.includes('frequency') || normalized.includes('monetary')
+    normalized.includes('rfm') ||
+    (normalized.includes('phan nhom') && normalized.includes('khach')) ||
+    (normalized.includes('phan khuc') && normalized.includes('khach'))
+
+  const mentionsTop     = normalized.includes('ban chay') || normalized.includes('top ') ||
+    normalized.includes('cao nhat') || normalized.includes('nhieu nhat')
+  const mentionsProfit  = normalized.includes('loi nhuan')
+  const mentionsRevenue = normalized.includes('doanh thu') || normalized.includes('don hang') || normalized.includes('so don')
+
+  // BUG-4 fix: "bán chạy" mặc định → quantity; chỉ đổi sang revenue/profit khi có từ khóa rõ
+  const topProductsSortBy =
+    mentionsProfit ? 'profit' :
+    (normalized.includes('doanh thu cao') || normalized.includes('revenue')) ? 'revenue' :
+    'quantity'
+
+  const isTopProductsQuery =
+    !isCategoryContext && !isCustomerContext && !isStockLossQuery && !isTrendQuery &&
+    (
+      (mentionsTop && (isProductContext || hangIsProduct)) ||
+      (normalized.includes('ban chay') && (isProductContext || hangIsProduct))
+    )
+
+  const isRevenueSummaryQuery =
+    !isForecastQuery && !isTrendQuery &&
+    (mentionsRevenue || mentionsProfit) &&
+    !isTopProductsQuery && !mentionsMatrixAnalysis &&
+    !isCategoryContext && !isStockLossQuery && !isCustomerContext
 
   return {
-    matrixCellMatch,
+    validMatrixCell,
     mentionsMatrixAnalysis,
     mentionsLowStock,
     mentionsInventoryValue,
-    mentionsCategoryRevenue,
-    mentionsStockLoss,
-    mentionsCustomer,
-    mentionsTopCustomer,
-    mentionsTrend,
-    mentionsFuture,
-    mentionsAov,
-    isAovQuery,
+    isStockLossQuery,
+    isTrendQuery,
+    isForecastQuery,
+    isRFMQuery,
     isTopProductsQuery,
+    topProductsSortBy,
     isRevenueSummaryQuery,
+    isCategoryContext,
+    isCustomerContext,
+    mentionsFrequency,
+    mentionsRevenue,
     mentionsProfit,
     isProductContext,
-    isRFMQuery,
   }
 }
 
-// ─── Deterministic intent router ─────────────────────────────────────────────
+// ─── Deterministic router — thay thế toàn bộ hàm runDeterministicIntent ──────
 
 async function runDeterministicIntent(message, latestDate) {
   const normalized = normalizeText(message)
+  const range      = { startDate: dateAdd(latestDate, -29), endDate: latestDate }
 
-  // Parse range từ câu hỏi, dùng latestDate làm mốc "hôm nay"
-  const range = parseDateRange(message, latestDate)
-  const intent = classifyIntent(normalized)
+  const explicitDateMention  = /\d{4}-\d{2}-\d{2}/.test(message)
+  const dataRelativePhrases  = ['tuan nay', 'thang nay', 'ky nay', 'hom nay', 'ky truoc', 'thang truoc']
+  const askedDataRelative    = dataRelativePhrases.some(p => normalized.includes(p))
+  const intent               = classifyIntent(normalized)
 
-  // 1a. Forecast — phải check TRƯỚC revenue summary để "tuần sau/tháng tới" không bị nhầm
-  if (intent.mentionsFuture) {
-    // Đọc số ngày dự báo từ câu hỏi nếu có
-    const daysMatch = normalizeText(message).match(/(\d+)\s*ngay/)
-    const weeksMatch = normalizeText(message).match(/(\d+)\s*tuan/)
-    const monthsMatch = normalizeText(message).match(/(\d+)\s*thang/)
-    const forecastDays = daysMatch ? +daysMatch[1]
-      : weeksMatch ? +weeksMatch[1] * 7
-      : monthsMatch ? +monthsMatch[1] * 30
-      : /tuan sau/.test(normalized) ? 7
-      : /thang toi/.test(normalized) ? 30
-      : /nam toi/.test(normalized) ? 365
-      : 30
-    const args = { forecastDays: Math.min(forecastDays, 365), model: 'linear' }
-    const data = await forecastRevenue(args)
-    const totalFmt = money(data.totalForecastRevenue)
-    const avgFmt = money(data.averageDailyRevenue)
+  // Block câu hỏi dùng thời gian tương đối về dữ liệu đã có (không block forecast)
+  if (askedDataRelative && !explicitDateMention && !intent.isForecastQuery) {
     return {
-      answer: `Dự báo doanh thu ${forecastDays} ngày tới: tổng khoảng ${totalFmt}, trung bình ${avgFmt}/ngày.`,
-      toolCalls: [{ toolName: 'forecastRevenue', args, hasData: Boolean(data.forecast?.length) }],
+      answer: `Dữ liệu mới nhất trong datamart là ${latestDate}. Tôi có thể báo cáo khoảng ${range.startDate} → ${range.endDate}. Bạn có muốn tiếp tục không?`,
+      toolCalls: [],
     }
   }
 
-  // 1. Matrix cell
-  if (intent.matrixCellMatch) {
-    const abcClass = intent.matrixCellMatch[1].toUpperCase()
-    const xyzClass = intent.matrixCellMatch[2].toUpperCase()
-    const args = { abcClass, xyzClass, startDate: range.startDate, endDate: range.endDate, includeInventory: true, sortBy: 'revenue', limit: 10 }
-    const data = await getProductsByMatrix(args)
+  // 1. Matrix cell → danh sách sản phẩm
+  if (intent.validMatrixCell) {
+    const abcClass = intent.validMatrixCell[1].toUpperCase()
+    const xyzClass = intent.validMatrixCell[2].toUpperCase()
+    const data = await getProductsByMatrix({ abcClass, xyzClass, ...range, includeInventory: true, sortBy: 'revenue', limit: 10 })
     return {
-      answer: summarizeMatrixProducts(data, abcClass, xyzClass, range, latestDate),
-      toolCalls: [{ toolName: 'getProductsByMatrix', args, hasData: data.length > 0 }],
+      answer: summarizeMatrixProducts(data, abcClass, xyzClass, range),
+      toolCalls: [{ toolName: 'getProductsByMatrix', args: { abcClass, xyzClass, ...range, includeInventory: true }, hasData: data.length > 0 }],
     }
   }
 
-  // 2. Matrix distribution
+  // 2. Matrix distribution — BUG-9/10 fix
   if (intent.mentionsMatrixAnalysis) {
-    const args = { startDate: range.startDate, endDate: range.endDate, includeInventoryValue: true }
-    const data = await getMatrixDistribution(args)
+    const data = await getMatrixDistribution({ ...range, includeInventoryValue: true })
     return {
-      answer: `Phân bổ ABC/XYZ (${range.label}):\n${JSON.stringify(data)}`,
-      toolCalls: [{ toolName: 'getMatrixDistribution', args, hasData: data.length > 0 }],
+      answer: summarizeMatrixDistribution(data, range),
+      toolCalls: [{ toolName: 'getMatrixDistribution', args: { ...range, includeInventoryValue: true }, hasData: data.length > 0 }],
     }
   }
 
-  if (intent.isRFMQuery) {
-  const today = todayUtcText()
-  const data = await getRFMSegments({ asOfDate: latestDate, includeList: false })
-  const lines = (data.summary || [])
-    .sort((a, b) => b.customerCount - a.customerCount)
-    .map(s => `• ${s.segment}: ${s.customerCount} KH, doanh thu ${money(s.revenue)}`)
-    .join('\n')
-  return {
-    answer: `Phân nhóm RFM khách hàng (tính đến ${latestDate}):\n${lines || 'Chưa có dữ liệu phân nhóm.'}`,
-    toolCalls: [{ toolName: 'getRFMSegments', args: { asOfDate: latestDate, includeList: false }, hasData: (data.summary?.length ?? 0) > 0 }],
-  }
-}
-
-  // 3. Low stock (không cần date range)
+  // 3. Low stock
   if (intent.mentionsLowStock) {
     const data = await getLowStockAlerts({})
     return {
-      answer: summarizeLowStock(data, latestDate),
+      answer: summarizeLowStock(data),
       toolCalls: [{ toolName: 'getLowStockAlerts', args: {}, hasData: data.length > 0 }],
     }
   }
 
-  // 4b. Product count — "hiện có bao nhiêu sản phẩm/mặt hàng/SKU?"
-  const isProductCountQuery =
-    /bao nhieu (san pham|thuoc|mat hang|sku|loai)|tong so (san pham|thuoc|mat hang|sku)|hien co (san pham|thuoc)|so luong (san pham|thuoc|mat hang)/.test(normalized) &&
-    !intent.mentionsLowStock && !intent.isTopProductsQuery
-
-  if (isProductCountQuery) {
-    const breakdown = /danh muc|nhom/.test(normalized) ? 'category' : 'none'
-    const args = { breakdown }
-    const data = await getInventoryValue(args)
-    const totalProducts = data.groups.reduce((s, g) => s + g.productCount, 0)
-    const lag = dataLagNote(latestDate, latestDate)
-    if (breakdown === 'category') {
-      const lines = data.groups.map((g, i) => `${i + 1}. ${g.name}: ${quantity(g.productCount)} sản phẩm`)
-      return {
-        answer: `Số sản phẩm theo danh mục (tổng ${quantity(totalProducts)}):${lag}\n${lines.join('\n')}`,
-        toolCalls: [{ toolName: 'getInventoryValue', args, hasData: totalProducts > 0 }],
-      }
-    }
-    return {
-      answer: `Hiện có ${quantity(totalProducts)} sản phẩm/SKU trong kho (theo snapshot tồn kho mới nhất).${lag}`,
-      toolCalls: [{ toolName: 'getInventoryValue', args, hasData: totalProducts > 0 }],
-    }
-  }
-
-  // 4. Inventory value
+  // 4. Inventory value — BUG-6 fix: breakdown đúng theo câu hỏi
   if (intent.mentionsInventoryValue) {
-    const breakdown = /danh muc|category/.test(normalized) ? 'category'
-      : /nha cung cap|supplier/.test(normalized) ? 'supplier'
+    const breakdown = normalized.includes('danh muc') ? 'category'
+      : (normalized.includes('nha cung cap') || normalized.includes('supplier')) ? 'supplier'
       : 'none'
-    const args = { breakdown }
-    const data = await getInventoryValue(args)
+    const data = await getInventoryValue({ breakdown })
     return {
-      answer: `Giá trị tồn kho (${breakdown}): tổng ${money(data.totalValue)}, ${quantity(data.totalQty)} đơn vị.`,
-      toolCalls: [{ toolName: 'getInventoryValue', args, hasData: Boolean(data.totalValue) }],
+      answer: summarizeInventoryValue(data),
+      toolCalls: [{ toolName: 'getInventoryValue', args: { breakdown }, hasData: (data.groups?.length ?? 0) > 0 }],
     }
   }
 
-  // 5. Stock loss
-  if (intent.mentionsStockLoss) {
-    const groupBy = /san pham|thuoc/.test(normalized) ? 'product'
-      : /danh muc|nhom/.test(normalized) ? 'category'
+  // 5. Stock loss — BUG-8 fix: groupBy đúng
+  if (intent.isStockLossQuery) {
+    const groupBy = (normalized.includes('nhom') || normalized.includes('danh muc')) ? 'category'
+      : (normalized.includes('san pham') || normalized.includes('thuoc')) ? 'product'
       : 'month'
-    const args = { startDate: range.startDate, endDate: range.endDate, groupBy }
-    const data = await getStockLossSummary(args)
-    const total = data.reduce((s, r) => s + r.lossValue, 0)
+    const data = await getStockLossSummary({ ...range, groupBy })
     return {
-      answer: `Hủy hàng / hao hụt (${range.label}): tổng ${money(total)}, ${data.length} nhóm.`,
-      toolCalls: [{ toolName: 'getStockLossSummary', args, hasData: data.length > 0 }],
+      answer: summarizeStockLoss(data, groupBy),
+      toolCalls: [{ toolName: 'getStockLossSummary', args: { ...range, groupBy }, hasData: data.length > 0 }],
     }
   }
 
-  // 6. Category revenue
-  if (intent.mentionsCategoryRevenue) {
-    const args = { startDate: range.startDate, endDate: range.endDate, compareWith: 'prev_period' }
-    const data = await getCategoryRevenue(args)
-    const lines = data.slice(0, 5).map((r, i) =>
-      `${i + 1}. ${r.categoryName}: ${money(r.revenue)} (${r.revenueChangePercent != null ? (r.revenueChangePercent > 0 ? '+' : '') + r.revenueChangePercent + '%' : 'n/a'})`
-    )
+  // 6. RFM
+  if (intent.isRFMQuery) {
+    const data  = await getRFMSegments({ asOfDate: latestDate, includeList: false })
+    const lines = (data.summary || [])
+      .sort((a, b) => b.customerCount - a.customerCount)
+      .map(s => `• ${s.segment}: ${s.customerCount} KH, doanh thu ${money(s.revenue)}`)
+      .join('\n')
     return {
-      answer: `Doanh thu theo danh mục (${range.label}):\n${lines.join('\n')}`,
-      toolCalls: [{ toolName: 'getCategoryRevenue', args, hasData: data.length > 0 }],
+      answer: `Phân nhóm RFM (đến ${latestDate}):\n${lines || 'Chưa có dữ liệu.'}`,
+      toolCalls: [{ toolName: 'getRFMSegments', args: { asOfDate: latestDate }, hasData: (data.summary?.length ?? 0) > 0 }],
     }
   }
 
-  // 7. Trend
-  if (intent.mentionsTrend) {
-    const granularity = /ngay/.test(normalized) ? 'daily' : /tuan/.test(normalized) ? 'weekly' : 'monthly'
-    const metric = /don hang|so don/.test(normalized) ? 'orders' : /aov/.test(normalized) ? 'aov' : 'revenue'
-    const args = { startDate: range.startDate, endDate: range.endDate, granularity, metric }
-    const data = await getSalesTrend(args)
-    return {
-      answer: `Xu hướng ${metric} (${range.label}): ${data.length} điểm dữ liệu.`,
-      toolCalls: [{ toolName: 'getSalesTrend', args, hasData: data.length > 0 }],
-    }
-  }
-
-  // 7b. Top customers
-  if (intent.mentionsTopCustomer) {
-    const limitMatch = normalizeText(message).match(/top\s*(\d+)/)
-    const limit = limitMatch ? Math.min(+limitMatch[1], 100) : 10
-    const sortBy = /tan suat|nhieu lan|so lan/.test(normalized) ? 'frequency'
-      : /aov|gia tri don/.test(normalized) ? 'aov'
+  // 7. Trend — BUG-1/2/3 fix: route trực tiếp, tính % đúng trong summarizeTrend
+  if (intent.isTrendQuery) {
+    const metric = normalized.includes('aov') ? 'aov'
+      : (normalized.includes('so don') || normalized.includes('don hang')) ? 'orders'
       : 'revenue'
-    const args = { startDate: range.startDate, endDate: range.endDate, sortBy, limit }
-    const data = await getTopCustomers(args)
-    const lines = data.slice(0, 5).map((r, i) =>
-      `${i + 1}. ${r.customerName || r.customerKey}: ${money(r.totalSpent || r.revenue)}, ${quantity(r.orderCount || r.orders)} đơn`
-    )
+    const granularity = normalized.includes('tuan') ? 'weekly'
+      : normalized.includes('ngay') ? 'daily'
+      : 'monthly'
+    const trendRange = { startDate: dateAdd(latestDate, -179), endDate: latestDate }
+    const data = await getSalesTrend({ ...trendRange, granularity, metric })
     return {
-      answer: `Top khách hàng (${range.label}):\n${lines.join('\n')}`,
-      toolCalls: [{ toolName: 'getTopCustomers', args, hasData: data.length > 0 }],
+      answer: summarizeTrend(data, metric),
+      toolCalls: [{ toolName: 'getSalesTrend', args: { ...trendRange, granularity, metric }, hasData: data.length > 0 }],
     }
   }
 
-  // 7c. Customer overview (active, new, returning, total)
-  if (intent.mentionsCustomer) {
-    const args = { startDate: range.startDate, endDate: range.endDate }
-    const data = await getCustomerOverview(args)
-    const lag = dataLagNote(latestDate, range.endDate)
-    // Nếu hỏi tổng số khách hàng (không kèm "tháng/tuần/kỳ") → nổi bật totalCustomers
-    const askingTotal = /bao nhieu khach|tong so khach|hien co|co bao nhieu/.test(normalized) &&
-      !/thang nay|tuan nay|ky nay|hom nay/.test(normalized)
-    const lines = [`Khách hàng (${range.label}):${lag}`]
-    if (askingTotal && data.totalCustomers) {
-      lines.push(`Tổng số KH trong hệ thống: ${quantity(data.totalCustomers)}`)
-    }
-    lines.push(
-      `Hoạt động trong kỳ: ${quantity(data.activeCustomers)}, Mới: ${quantity(data.newCustomers)}, Quay lại: ${quantity(data.returningCustomers)}`,
-      `Doanh thu/KH: ${money(data.revenuePerCustomer)}, Đơn/KH: ${data.ordersPerCustomer?.toFixed(1)}`,
-    )
+  // 8. Category growth — BUG-5 fix
+  if (intent.isCategoryContext) {
+    const data = await getCategoryRevenue({ ...range, compareWith: 'prev_period' })
     return {
-      answer: lines.join('\n'),
-      toolCalls: [{ toolName: 'getCustomerOverview', args, hasData: Boolean(data.activeCustomers || data.totalCustomers) }],
+      answer: summarizeCategoryGrowth(data),
+      toolCalls: [{ toolName: 'getCategoryRevenue', args: { ...range, compareWith: 'prev_period' }, hasData: data.length > 0 }],
     }
   }
 
-  // 8. Top products
+  // 9. Top products — BUG-4 fix: sortBy đúng
   if (intent.isTopProductsQuery) {
-    // Đọc số lượng từ câu hỏi nếu có: "top 10", "top 5"
-    const limitMatch = normalizeText(message).match(/top\s*(\d+)/)
-    const limit = limitMatch ? Math.min(+limitMatch[1], 100) : 5
-    const sortBy = intent.mentionsProfit ? 'profit' : 'revenue'
-    const args = { startDate: range.startDate, endDate: range.endDate, sortBy, limit }
-    const data = await getTopProducts(args)
+    const sortBy = intent.topProductsSortBy
+    const data   = await getTopProducts({ ...range, sortBy, limit: 10 })
     return {
-      answer: summarizeTopProducts(data, range, latestDate),
-      toolCalls: [{ toolName: 'getTopProducts', args, hasData: data.length > 0 }],
+      answer: summarizeTopProducts(data, range, sortBy),
+      toolCalls: [{ toolName: 'getTopProducts', args: { ...range, sortBy, limit: 10 }, hasData: data.length > 0 }],
     }
   }
 
-  // 9. Revenue / order summary
-  if (intent.isRevenueSummaryQuery) {
-    const groupBy = range.label === 'hôm nay' || range.label === 'hôm qua' ? 'day'
-      : /tuan/.test(normalizeText(range.label || '')) ? 'day'
-      : /thang|quy|nam/.test(normalizeText(range.label || '')) ? 'month'
-      : 'day'
-    const args = { startDate: range.startDate, endDate: range.endDate, groupBy, compareWith: 'prev_period' }
-    const data = await getSalesSummary(args)
+  // 10. Top customers — BUG-3 fix: "mua nhiều nhất" → frequency
+  if (intent.isCustomerContext && intent.mentionsFrequency) {
+    const data  = await getTopCustomers({ ...range, sortBy: 'frequency', limit: 10 })
+    const lines = data.slice(0, 10).map((c, i) =>
+      `${i + 1}. ${c.customerName || c.customerId}: ${c.orderCount} đơn, tổng ${money(c.revenue)}`
+    )
     return {
-      answer: summarizeSales(data, range, latestDate),
-      toolCalls: [{ toolName: 'getSalesSummary', args, hasData: true }],
+      answer: `Top khách hàng mua nhiều nhất (${range.startDate} → ${range.endDate}):\n${lines.join('\n')}`,
+      toolCalls: [{ toolName: 'getTopCustomers', args: { ...range, sortBy: 'frequency', limit: 10 }, hasData: data.length > 0 }],
+    }
+  }
+
+  // 11. Revenue summary
+  if (intent.isRevenueSummaryQuery) {
+    const data = await getSalesSummary({ ...range, groupBy: 'day', compareWith: 'prev_period' })
+    return {
+      answer: summarizeSales(data),
+      toolCalls: [{ toolName: 'getSalesSummary', args: { ...range, compareWith: 'prev_period' }, hasData: true }],
     }
   }
 
