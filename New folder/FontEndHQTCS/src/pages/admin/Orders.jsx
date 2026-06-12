@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { jsPDF } from 'jspdf'
 import Pagination from '../../components/common/Pagination'
+import ListLoadError from '../../components/common/ListLoadError'
 import { getSalesInvoices } from '../../api/salesInvoiceService'
 import { mapInvoiceToOrder } from '../../api/mappers'
 import { useInventoryAlerts } from '../../context/InventoryAlertContext'
@@ -88,6 +89,7 @@ export default function Orders() {
     startIndex,
     endIndex,
     loading,
+    error,
     reload,
   } = useServerPagination(fetchOrders, [search, selectedStatus, currentUser?.employeeId, isAdmin])
 
@@ -309,6 +311,7 @@ export default function Orders() {
 
   return (
     <div className="w-full space-y-4 pt-0 animate-in fade-in duration-300">
+      <ListLoadError error={error} onRetry={() => reload(page)} />
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
         {/* LEFT FILTER */}
         <div className="space-y-5">

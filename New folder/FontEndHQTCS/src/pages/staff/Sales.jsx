@@ -3,6 +3,7 @@ import { lookupCustomer, getApiErrorMessage } from '../../api'
 import { getMedicines } from '../../api/medicineService'
 import { mapMedicineToFe } from '../../api/mappers'
 import Pagination from '../../components/common/Pagination'
+import ListLoadError from '../../components/common/ListLoadError'
 import { getDisplayStatus, useInventoryAlerts } from '../../context/InventoryAlertContext'
 import { useSetPageHeader } from '../../context/PageHeaderContext'
 import { useAppDialog } from '../../context/AppDialogContext'
@@ -68,6 +69,7 @@ export default function Sales() {
     startIndex,
     endIndex,
     loading,
+    error,
     reload,
   } = useServerPagination(fetchMedicines, [searchQuery])
   
@@ -242,6 +244,7 @@ export default function Sales() {
 
   return (
     <div className="w-full space-y-4 pt-0 animate-in fade-in duration-300">
+      <ListLoadError error={error} onRetry={() => reload(page)} />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 xl:grid-cols-4">
         
         {/* KHU VỰC TRÁI (SẢN PHẨM) */}

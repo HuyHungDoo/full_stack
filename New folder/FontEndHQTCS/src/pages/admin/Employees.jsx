@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import Pagination from '../../components/common/Pagination'
+import ListLoadError from '../../components/common/ListLoadError'
 import { getEmployees } from '../../api/employeeService'
 import { mapEmployeeToFe } from '../../api/mappers'
 import { useSetPageHeader } from '../../context/PageHeaderContext'
@@ -63,6 +64,7 @@ export default function Employees() {
     startIndex,
     endIndex,
     loading,
+    error,
     reload,
     meta,
   } = useServerPagination(fetchEmployees, [search, filterRole])
@@ -137,6 +139,7 @@ export default function Employees() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300 w-full pt-0">
+      <ListLoadError error={error} onRetry={() => reload(page)} />
       <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
         <StatCard title="Tổng nhân viên" value={summary.totalEmployees} subtitle="Toàn bộ tài khoản đã đăng ký" />
         <StatCard title="Quản trị viên" value={summary.adminCount} subtitle="Tài khoản cấp Admin" />

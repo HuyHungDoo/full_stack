@@ -13,14 +13,17 @@ export function useServerPagination(fetchPage, resetDeps = []) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const fetchRef = useRef(fetchPage)
+  const pageRef = useRef(page)
+  const resetKey = JSON.stringify(resetDeps)
 
   fetchRef.current = fetchPage
+  pageRef.current = page
 
   useEffect(() => {
     setPage(1)
-  }, resetDeps)
+  }, [resetKey])
 
-  const reload = useCallback(async (targetPage = page) => {
+  const reload = useCallback(async (targetPage = pageRef.current) => {
     setLoading(true)
     setError(null)
     try {
@@ -40,11 +43,11 @@ export function useServerPagination(fetchPage, resetDeps = []) {
     } finally {
       setLoading(false)
     }
-  }, [page])
+  }, [])
 
   useEffect(() => {
     reload(page)
-  }, [page, reload, ...resetDeps])
+  }, [page, resetKey, reload])
 
   const totalItems = meta.total
   const totalPages = meta.totalPages || 1

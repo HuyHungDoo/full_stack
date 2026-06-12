@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import Pagination from '../../components/common/Pagination'
+import ListLoadError from '../../components/common/ListLoadError'
 import { getCustomerInvoices, getCustomers } from '../../api/customerService'
 import { mapCustomerToFe, mapInvoiceStatusToFe } from '../../api/mappers'
 import { useSetPageHeader } from '../../context/PageHeaderContext'
@@ -59,6 +60,8 @@ export default function Customers() {
     startIndex,
     endIndex,
     loading,
+    error,
+    reload,
   } = useServerPagination(fetchCustomers, [search])
 
   const fetchCustomerOrders = useCallback(
@@ -91,6 +94,7 @@ export default function Customers() {
 
   return (
     <div className="w-full space-y-4 pt-0 animate-in fade-in duration-300">
+      <ListLoadError error={error} onRetry={() => reload(page)} />
       <div className="grid grid-cols-1 gap-6">
         <div className="rounded-[28px] bg-white p-5 shadow-lg ring-1 ring-slate-100">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

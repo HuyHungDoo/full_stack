@@ -21,6 +21,7 @@ import { useAppDialog } from '../../context/AppDialogContext'
 import { getInventoryStats, getMedicines } from '../../api'
 import { mapMedicineToFe } from '../../api/mappers'
 import Pagination from './Pagination'
+import ListLoadError from './ListLoadError'
 import { PAGE_SIZE } from '../../hooks/usePagination'
 import { useServerPagination } from '../../hooks/useServerPagination'
 
@@ -213,16 +214,6 @@ export default function Inventory() {
     return () => window.clearTimeout(timer)
   }, [importForm.medicineName, importModal.isOpen])
 
-  const matchedImportMedicine = useMemo(() => {
-    const keyword = importForm.medicineName.trim().toLowerCase()
-    if (!keyword) return null
-    return (
-      importSearchResults.find((item) => item.name.trim().toLowerCase() === keyword) ||
-      medicines.find((item) => item.name.trim().toLowerCase() === keyword) ||
-      null
-    )
-  }, [importForm.medicineName, importSearchResults, medicines])
-
   const fetchMedicines = useCallback(
     async (page) => {
       const result = await getMedicines({
@@ -248,9 +239,20 @@ export default function Inventory() {
     startIndex,
     endIndex,
     loading: listLoading,
+    error: listError,
     reload,
     meta: medicineMeta,
   } = useServerPagination(fetchMedicines, [search])
+
+  const matchedImportMedicine = useMemo(() => {
+    const keyword = importForm.medicineName.trim().toLowerCase()
+    if (!keyword) return null
+    return (
+      importSearchResults.find((item) => item.name.trim().toLowerCase() === keyword) ||
+      medicines.find((item) => item.name.trim().toLowerCase() === keyword) ||
+      null
+    )
+  }, [importForm.medicineName, importSearchResults, medicines])
 
   const filteredData = useMemo(() => {
     const matched = medicines.filter((item) => {
@@ -711,6 +713,7 @@ export default function Inventory() {
 
   return (
     <div className="space-y-6 pt-0 w-full animate-in fade-in duration-300">
+      <ListLoadError error={listError} onRetry={() => reload(page)} />
       <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[

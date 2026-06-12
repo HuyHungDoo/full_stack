@@ -170,44 +170,44 @@ export default function Profile() {
           loadingProfile ? (
             <p className="text-sm text-slate-500">Đang tải hồ sơ...</p>
           ) : (
-          <form onSubmit={handleSaveProfile} className="space-y-4">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Họ tên</label>
-              <input
-                value={profileForm.name}
-                onChange={(e) => handleProfileChange('name', e.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-4 py-3"
-              />
-            </div>
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Email</label>
-              <input
-                value={profileForm.email}
-                onChange={(e) => handleProfileChange('email', e.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-4 py-3"
-              />
-            </div>
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Số điện thoại</label>
-              <input
-                value={profileForm.phone}
-                onChange={(e) => handleProfileChange('phone', e.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-4 py-3"
-              />
-            </div>
-            {profileMsg && (
-              <p className={`text-sm ${profileMsg.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
-                {profileMsg.text}
-              </p>
-            )}
-            <button
-              type="submit"
-              disabled={savingProfile}
-              className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white disabled:opacity-70"
-            >
-              {savingProfile ? 'Đang lưu...' : 'Lưu thông tin'}
-            </button>
-          </form>
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">Họ tên</label>
+                <input
+                  value={profileForm.name}
+                  onChange={(e) => handleProfileChange('name', e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">Email</label>
+                <input
+                  value={profileForm.email}
+                  onChange={(e) => handleProfileChange('email', e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">Số điện thoại</label>
+                <input
+                  value={profileForm.phone}
+                  onChange={(e) => handleProfileChange('phone', e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3"
+                />
+              </div>
+              {profileMsg && (
+                <p className={`text-sm ${profileMsg.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {profileMsg.text}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={savingProfile}
+                className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white disabled:opacity-70"
+              >
+                {savingProfile ? 'Đang lưu...' : 'Lưu thông tin'}
+              </button>
+            </form>
           )
         ) : (
           <form onSubmit={handleChangePassword} className="space-y-4">

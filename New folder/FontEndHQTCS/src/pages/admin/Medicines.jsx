@@ -4,6 +4,7 @@ import {
   FaTimes,
 } from 'react-icons/fa'
 import Pagination from '../../components/common/Pagination'
+import ListLoadError from '../../components/common/ListLoadError'
 import { getMedicines } from '../../api/medicineService'
 import { mapMedicineToFe } from '../../api/mappers'
 import { useInventoryAlerts } from '../../context/InventoryAlertContext'
@@ -104,6 +105,7 @@ export default function Medicines() {
     startIndex,
     endIndex,
     loading,
+    error,
     reload,
   } = useServerPagination(fetchMedicines, [search, selectedGroup, selectedTypes])
 
@@ -231,6 +233,7 @@ export default function Medicines() {
 
   return (
     <div className="w-full space-y-4 pt-0 animate-in fade-in duration-300">
+      <ListLoadError error={error} onRetry={() => reload(page)} />
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
         {/* LEFT FILTER */}
         <div className="space-y-5">

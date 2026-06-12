@@ -23,7 +23,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const skipAuthRedirect = Boolean(error.config?.skipAuthRedirect)
+    if (error.response?.status === 401 && !skipAuthRedirect) {
       localStorage.removeItem('token')
       localStorage.removeItem('accessToken')
       localStorage.removeItem('user')

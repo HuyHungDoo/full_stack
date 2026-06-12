@@ -87,7 +87,7 @@ export async function updateMe(data) {
 }
 
 export async function getMe() {
-  const response = await api.get('/auth/me')
+  const response = await api.get('/auth/me', { skipAuthRedirect: true })
   const raw = response.data?.data || response.data
   return normalizeUser(raw)
 }
