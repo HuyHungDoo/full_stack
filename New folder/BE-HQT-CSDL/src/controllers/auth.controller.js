@@ -13,7 +13,10 @@ const loginSchema = z.object({
 
 const updateMeSchema = z.object({
   fullName: z.string().min(2, 'Họ tên tối thiểu 2 ký tự').max(100).optional(),
-  phone: z.string().regex(phoneRegex, 'Số điện thoại không hợp lệ').nullable().optional(),
+  phone: z.preprocess(
+    (val) => (val === '' || val === undefined ? null : val),
+    z.string().regex(phoneRegex, 'Số điện thoại không hợp lệ').nullable().optional(),
+  ),
   email: z.string().email('Email không hợp lệ').optional(),
 })
 

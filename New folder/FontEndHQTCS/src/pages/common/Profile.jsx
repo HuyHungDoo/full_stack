@@ -26,9 +26,11 @@ export default function Profile() {
   const [profileMsg, setProfileMsg] = useState(null)
   const [passwordMsg, setPasswordMsg] = useState(null)
   const [savingProfile, setSavingProfile] = useState(false)
+  const [loadingProfile, setLoadingProfile] = useState(true)
   const [activeTab, setActiveTab] = useState('profile')
 
   useEffect(() => {
+    setLoadingProfile(true)
     getMe()
       .then((me) => {
         setUser((prev) => ({ ...prev, ...me }))
@@ -38,7 +40,15 @@ export default function Profile() {
           phone: me.phone || '',
         })
       })
-      .catch(() => {})
+      .catch((error) => {
+        setProfileMsg({
+          type: 'error',
+          text: getApiErrorMessage(error, 'Không thể tải thông tin hồ sơ'),
+        })
+      })
+      .finally(() => {
+        setLoadingProfile(false)
+      })
   }, [])
 
   const employeeId = useMemo(
@@ -112,7 +122,7 @@ export default function Profile() {
       return
     }
     if (!employeeId) {
-      setPasswordMsg({ type: 'error', text: 'Không xác định được mã nhân viên.' })
+      setPasswordMsg({ type: 'error', text: 'Không xác định được mã nhân viên. Vui lòng tải lại trang.' })
       return
     }
 
@@ -157,6 +167,9 @@ export default function Profile() {
         </div>
 
         {activeTab === 'profile' ? (
+          loadingProfile ? (
+            <p className="text-sm text-slate-500">Đang tải hồ sơ...</p>
+          ) : (
           <form onSubmit={handleSaveProfile} className="space-y-4">
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">Họ tên</label>
@@ -195,6 +208,7 @@ export default function Profile() {
               {savingProfile ? 'Đang lưu...' : 'Lưu thông tin'}
             </button>
           </form>
+          )
         ) : (
           <form onSubmit={handleChangePassword} className="space-y-4">
             <div>

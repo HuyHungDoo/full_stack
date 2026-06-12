@@ -76,10 +76,11 @@ export async function login(credentials) {
 }
 
 export async function updateMe(data) {
+  const phone = String(data.phone ?? '').trim()
   const response = await api.patch('/auth/me', {
     fullName: data.fullName,
     email: data.email,
-    phone: data.phone || '',
+    phone: phone || null,
   })
   const raw = response.data?.data || response.data
   return normalizeUser(raw)

@@ -1,17 +1,48 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FaBell } from 'react-icons/fa'
+import { FaBell, FaChevronDown, FaSignOutAlt, FaUserCircle } from 'react-icons/fa'
 import { getAlerts } from '../../api/alertService'
+import { getMe } from '../../api/authService'
 import { useNavigate } from 'react-router-dom'
 import { usePageHeader } from '../../context/PageHeaderContext'
+
+function getRoleLabel(role) {
+  return role === 'admin' ? 'Quản trị viên' : 'Nhân viên'
+}
+
+function getInitials(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (parts.length === 0) return 'U'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+}
 
 export default function Header() {
   const navigate = useNavigate()
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || 'null'))
   const [openLowStockPopup, setOpenLowStockPopup] = useState(false)
+  const [openUserMenu, setOpenUserMenu] = useState(false)
   const [alerts, setAlerts] = useState([])
   const notificationRef = useRef(null)
+  const userMenuRef = useRef(null)
   const { pageHeader } = usePageHeader()
   const isAdmin = user?.role === 'admin'
+
+  const syncUserFromStorage = () => {
+    setUser(JSON.parse(localStorage.getItem('user') || 'null'))
+  }
+
+  useEffect(() => {
+    getMe()
+      .then((me) => {
+        const nextUser = { ...JSON.parse(localStorage.getItem('user') || 'null'), ...me }
+        localStorage.setItem('user', JSON.stringify(nextUser))
+        setUser(nextUser)
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!user) {
@@ -41,14 +72,14 @@ export default function Header() {
 
   const notificationCount = notificationItems.length
   const notificationPreview = useMemo(() => notificationItems.slice(0, 8), [notificationItems])
+  const displayName = user?.name || user?.fullName || user?.username || 'Người dùng'
 
   useEffect(() => {
-    const syncUser = () => setUser(JSON.parse(localStorage.getItem('user') || 'null'))
-    window.addEventListener('user-updated', syncUser)
-    window.addEventListener('storage', syncUser)
+    window.addEventListener('user-updated', syncUserFromStorage)
+    window.addEventListener('storage', syncUserFromStorage)
     return () => {
-      window.removeEventListener('user-updated', syncUser)
-      window.removeEventListener('storage', syncUser)
+      window.removeEventListener('user-updated', syncUserFromStorage)
+      window.removeEventListener('storage', syncUserFromStorage)
     }
   }, [])
 
@@ -57,14 +88,26 @@ export default function Header() {
       if (!notificationRef.current?.contains(event.target)) {
         setOpenLowStockPopup(false)
       }
+      if (!userMenuRef.current?.contains(event.target)) {
+        setOpenUserMenu(false)
+      }
     }
 
-    if (openLowStockPopup) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-
+    document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [openLowStockPopup])
+  }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('user')
+    navigate('/login', { replace: true })
+  }
+
+  const openProfile = () => {
+    setOpenUserMenu(false)
+    navigate('/profile')
+  }
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
@@ -81,7 +124,10 @@ export default function Header() {
             <div className="relative" ref={notificationRef}>
               <button
                 type="button"
-                onClick={() => setOpenLowStockPopup((prev) => !prev)}
+                onClick={() => {
+                  setOpenUserMenu(false)
+                  setOpenLowStockPopup((prev) => !prev)
+                }}
                 className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 transition hover:bg-slate-200"
                 title="Thông báo cảnh báo"
               >
@@ -126,9 +172,53 @@ export default function Header() {
             </div>
           )}
 
-          <div className="hidden text-right sm:block">
-            <p className="text-sm font-semibold text-slate-800">{user?.name || 'Người dùng'}</p>
-            <p className="text-xs text-slate-500">{user?.role === 'admin' ? 'Quản trị viên' : 'Nhân viên'}</p>
+          <div className="relative" ref={userMenuRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setOpenLowStockPopup(false)
+                setOpenUserMenu((prev) => !prev)
+              }}
+              className="flex items-center gap-3 rounded-2xl px-2 py-1.5 text-left transition hover:bg-slate-100"
+              title="Tài khoản của bạn"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 text-sm font-bold text-white shadow-sm">
+                {getInitials(displayName)}
+              </div>
+              <div className="hidden text-right sm:block">
+                <p className="text-sm font-semibold text-slate-800">{displayName}</p>
+                <p className="text-xs text-slate-500">{getRoleLabel(user?.role)}</p>
+              </div>
+              <FaChevronDown
+                className={`hidden text-slate-400 transition sm:block ${openUserMenu ? 'rotate-180' : ''}`}
+                size={12}
+              />
+            </button>
+
+            {openUserMenu && (
+              <div className="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl">
+                <div className="border-b border-slate-100 px-4 py-3">
+                  <p className="text-sm font-bold text-slate-800">{displayName}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{user?.username || user?.email || ''}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openProfile}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  <FaUserCircle className="text-slate-400" />
+                  Chỉnh sửa hồ sơ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-sm font-medium text-red-600 transition hover:bg-red-50"
+                >
+                  <FaSignOutAlt />
+                  Đăng xuất
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
