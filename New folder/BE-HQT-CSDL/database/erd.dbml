@@ -1,0 +1,287 @@
+// =============================================================================
+// ERD - HỆ THỐNG QUẢN LÝ TÀI CHÍNH NHÀ THUỐC (PharmacyFinance)
+// File: erd.dbml
+// Mục đích: Copy/paste vào https://dbdiagram.io để sinh sơ đồ ER tự động.
+// =============================================================================
+
+Project pharmacy_finance {
+  database_type: 'MSSQL'
+  Note: '''
+    Quản lý tài chính nhà thuốc (1 chi nhánh duy nhất).
+    Phạm vi: Nhập hàng → Bán hàng → Trả hàng → Hủy hàng hết hạn.
+    Lợi nhuận gộp tính qua CostPriceSnapshot trên dòng bán.
+    19 bảng, chuẩn hóa 3NF.
+  '''
+}
+
+// =============================================================================
+// PHẦN 1 - DANH MỤC CHUNG
+// =============================================================================
+
+Table Role {
+  RoleId      varchar(20)   [pk]
+  RoleName    nvarchar(50)  [not null, unique]
+  Description nvarchar(200)
+  Note: 'Chỉ có 2 vai trò: ADMIN, STAFF'
+}
+
+Table Employee {
+  EmployeeId   varchar(20)   [pk]
+  FullName     nvarchar(100) [not null]
+  Phone        varchar(20)
+  Email        varchar(100)  [not null, unique]
+  Username     varchar(50)   [not null, unique]
+  PasswordHash varchar(255)  [not null]
+  RoleId       varchar(20)   [not null, ref: > Role.RoleId]
+  IsActive     bit           [not null, default: 1]
+  IsRoot       bit           [not null, default: 0]
+  HireDate     date
+  CreatedAt    datetime2     [not null, default: `SYSUTCDATETIME()`]
+  Note: 'Nhân viên = tài khoản đăng nhập. IsRoot=1 là Chủ nhà thuốc.'
+}
+
+Table Unit {
+  UnitId   varchar(20)  [pk]
+  UnitName nvarchar(50) [not null, unique]
+  Note: 'Đơn vị tính: Viên, Vỉ, Hộp, Chai, Gói...'
+}
+
+Table MedicineCategory {
+  CategoryId   varchar(30)   [pk]
+  CategoryName nvarchar(150) [not null, unique]
+  Description  nvarchar(500)
+}
+
+Table Supplier {
+  SupplierId    varchar(20)   [pk]
+  SupplierName  nvarchar(150) [not null, unique]
+  Email         varchar(100)
+  Address       nvarchar(255)
+  IsActive      bit           [not null, default: 1]
+}
+
+Table Manufacturer {
+  ManufacturerId   varchar(20)   [pk]
+  ManufacturerName nvarchar(150) [not null, unique]
+  Country          nvarchar(100)
+}
+
+// =============================================================================
+// PHẦN 2 - THUỐC & LÔ HÀNG
+// =============================================================================
+
+Table Medicine {
+  MedicineId           varchar(30)    [pk]
+  MedicineName         nvarchar(200)  [not null]
+  CategoryId           varchar(30)    [ref: > MedicineCategory.CategoryId]
+  UnitId               varchar(20)    [not null, ref: > Unit.UnitId]
+  ManufacturerId       varchar(20)    [ref: > Manufacturer.ManufacturerId]
+  ProductType          nvarchar(50)   [not null, note: "'Thuốc kê đơn'|'Thuốc không kê đơn'|'Vật tư y tế'"]
+  DrugRegistrationCode nvarchar(80)
+  ListPrice            decimal(18,2)  [not null, default: 0]
+  MinStock             int            [not null, default: 0]
+  IsActive             bit            [not null, default: 1, note: '0 = ngừng kinh doanh']
+  Ingredient           "nvarchar(max)"
+  Usage                "nvarchar(max)"
+  Dosage               "nvarchar(max)"
+  Route                nvarchar(100)
+  CreatedAt            datetime2      [not null, default: `SYSUTCDATETIME()`]
+  UpdatedAt            datetime2      [not null, default: `SYSUTCDATETIME()`]
+  Note: 'Master thuốc. Giá NHẬP lưu ở MedicineBatch (mỗi lô 1 giá). ProductType đã bao hàm kê đơn/không kê đơn.'
+}
+
+Table MedicineBatch {
+  BatchId        varchar(40)   [pk]
+  MedicineId     varchar(30)   [not null, ref: > Medicine.MedicineId]
+  ImportPrice    decimal(18,2) [not null]
+  ImportDate     date          [not null]
+  ExpiryDate     date          [not null]
+  InitialQty     int           [not null]
+  CurrentQty     int           [not null]
+  SupplierId     varchar(20)   [ref: > Supplier.SupplierId]
+  ManufacturerId varchar(20)   [ref: > Manufacturer.ManufacturerId]
+  Note           nvarchar(500)
+
+  indexes {
+    (MedicineId, ExpiryDate) [name: 'IX_Batch_Medicine_Expiry']
+  }
+  Note: 'Tồn kho thực = SUM(CurrentQty) các lô còn hạn. Trừ tồn theo FIFO. Mỗi BatchId là duy nhất (không cần LotCode).'
+}
+
+// =============================================================================
+// PHẦN 3 - KHÁCH HÀNG
+// =============================================================================
+
+Table Customer {
+  CustomerId   varchar(20)   [pk]
+  CustomerName nvarchar(100) [not null]
+  Phone        varchar(20)   [note: 'Unique khi không NULL (filtered index)']
+  Gender       nvarchar(10)  [note: 'Nam|Nữ|Khác']
+  TotalSpent   decimal(18,2) [not null, default: 0]
+  CreatedAt    datetime2     [not null, default: `SYSUTCDATETIME()`]
+  Note: "Dữ liệu khách hàng được tạo từ hóa đơn bán hàng. CustomerId='KH000000' dành riêng cho 'Khách lẻ'."
+}
+
+// =============================================================================
+// PHẦN 4 - NHẬP HÀNG
+// =============================================================================
+
+Table PurchaseReceipt {
+  ReceiptId    varchar(30)   [pk]
+  SupplierId   varchar(20)   [not null, ref: > Supplier.SupplierId]
+  EmployeeId   varchar(20)   [not null, ref: > Employee.EmployeeId]
+  ReceiptDate  datetime2     [not null, default: `SYSUTCDATETIME()`]
+  TotalAmount  decimal(18,2) [not null, default: 0]
+  Status       nvarchar(20)  [not null, default: 'COMPLETED', note: 'DRAFT|COMPLETED|CANCELLED']
+  Note         nvarchar(500)
+}
+
+Table PurchaseReceiptLine {
+  LineId      varchar(40)   [pk]
+  ReceiptId   varchar(30)   [not null, ref: > PurchaseReceipt.ReceiptId]
+  MedicineId  varchar(30)   [not null, ref: > Medicine.MedicineId]
+  BatchId     varchar(40)   [not null, unique, ref: > MedicineBatch.BatchId]
+  Quantity    int           [not null]
+  UnitCost    decimal(18,2) [not null]
+  LineTotal   decimal(18,2) [not null]
+  Note: 'Quan hệ 1-1 với MedicineBatch: mỗi dòng nhập sinh 1 lô.'
+}
+
+// =============================================================================
+// PHẦN 5 - BÁN HÀNG
+// =============================================================================
+
+Table SalesInvoice {
+  InvoiceId            varchar(30)   [pk]
+  EmployeeId           varchar(20)   [not null, ref: > Employee.EmployeeId]
+  CustomerId           varchar(20)   [not null, ref: > Customer.CustomerId]
+  CustomerNameSnapshot nvarchar(100) [not null]
+  PhoneSnapshot        varchar(20)
+  InvoiceDate          datetime2     [not null, default: `SYSUTCDATETIME()`]
+  TotalAmount          decimal(18,2) [not null, default: 0, note: '= SUM(LineTotal)']
+  Status               nvarchar(20)  [not null, default: 'COMPLETED', note: 'COMPLETED|CANCELLED|RETURNED']
+  Note                 nvarchar(500)
+
+  indexes {
+    InvoiceDate [name: 'IX_Invoice_Date']
+  }
+}
+
+Table SalesInvoiceLine {
+  LineId               varchar(40)   [pk]
+  InvoiceId            varchar(30)   [not null, ref: > SalesInvoice.InvoiceId]
+  MedicineId           varchar(30)   [not null, ref: > Medicine.MedicineId]
+  BatchId              varchar(40)   [not null, ref: > MedicineBatch.BatchId]
+  MedicineNameSnapshot nvarchar(200) [not null]
+  UnitNameSnapshot     nvarchar(50)  [not null]
+  Quantity             int           [not null]
+  UnitPrice            decimal(18,2) [not null]
+  LineTotal            decimal(18,2) [not null, note: '= Quantity * UnitPrice']
+  CostPriceSnapshot    decimal(18,2) [not null, note: 'Giá vốn snapshot từ lô → COGS']
+  Note: 'BatchId chỉ định LÔ XUẤT theo FIFO theo HSD gần nhất.'
+}
+
+// =============================================================================
+// PHẦN 6 - TRẢ HÀNG
+// =============================================================================
+
+Table SalesReturn {
+  ReturnId    varchar(30)   [pk]
+  InvoiceId   varchar(30)   [not null, ref: > SalesInvoice.InvoiceId]
+  EmployeeId  varchar(20)   [not null, ref: > Employee.EmployeeId]
+  ReturnDate  datetime2     [not null, default: `SYSUTCDATETIME()`]
+  TotalRefund decimal(18,2) [not null, default: 0]
+  Reason      nvarchar(500)
+  Status      nvarchar(20)  [not null, default: 'COMPLETED', note: 'COMPLETED|CANCELLED']
+}
+
+Table SalesReturnLine {
+  LineId        varchar(40)   [pk]
+  ReturnId      varchar(30)   [not null, ref: > SalesReturn.ReturnId]
+  InvoiceLineId varchar(40)   [not null, ref: > SalesInvoiceLine.LineId]
+  Quantity      int           [not null]
+  RefundAmount  decimal(18,2) [not null]
+  Reason        nvarchar(300)
+}
+
+// =============================================================================
+// PHẦN 7 - HỦY HÀNG HẾT HẠN (chi phí ảnh hưởng lợi nhuận)
+// =============================================================================
+
+Table StockWriteOff {
+  WriteOffId   varchar(30)   [pk]
+  EmployeeId   varchar(20)   [not null, ref: > Employee.EmployeeId]
+  WriteOffDate datetime2     [not null, default: `SYSUTCDATETIME()`]
+  TotalCost    decimal(18,2) [not null, default: 0]
+  Reason       nvarchar(500) [note: 'Hết hạn / Hỏng / Mất']
+  Status       nvarchar(20)  [not null, default: 'COMPLETED']
+  Note: 'Phiếu hủy hàng = bút toán chi phí (cost of disposal).'
+}
+
+Table StockWriteOffLine {
+  LineId     varchar(40)   [pk]
+  WriteOffId varchar(30)   [not null, ref: > StockWriteOff.WriteOffId]
+  BatchId    varchar(40)   [not null, ref: > MedicineBatch.BatchId]
+  MedicineId varchar(30)   [not null, ref: > Medicine.MedicineId]
+  Quantity   int           [not null]
+  UnitCost   decimal(18,2) [not null, note: '= ImportPrice của lô (snapshot)']
+  LineCost   decimal(18,2) [not null]
+  Reason     nvarchar(300)
+}
+
+// =============================================================================
+// PHẦN 8 - CẢNH BÁO & THÔNG BÁO
+// =============================================================================
+
+Table InventoryAlert {
+  AlertId        varchar(40)   [pk]
+  MedicineId     varchar(30)   [not null, ref: > Medicine.MedicineId]
+  AlertType      nvarchar(30)  [not null, note: 'LOW_STOCK|NEAR_EXPIRY|EXPIRED']
+  StockSnapshot  int           [not null]
+  MinStock       int           [not null]
+  Note           nvarchar(500)
+  Status         nvarchar(20)  [not null, default: 'PENDING', note: 'PENDING|RESOLVED|REJECTED']
+  CreatedBy      varchar(20)   [ref: > Employee.EmployeeId]
+  CreatedAt      datetime2     [not null, default: `SYSUTCDATETIME()`]
+  ResolvedBy     varchar(20)   [ref: > Employee.EmployeeId]
+  ResolvedAt     datetime2
+  ResolutionType nvarchar(20)  [note: 'RECEIPT|ADJUSTMENT|REJECT']
+  ResolutionNote nvarchar(500)
+}
+
+Table Notification {
+  NotificationId   varchar(40)   [pk]
+  TargetRoleId     varchar(20)   [ref: > Role.RoleId]
+  TargetEmployeeId varchar(20)   [ref: > Employee.EmployeeId]
+  Message          nvarchar(500) [not null]
+  IsRead           bit           [not null, default: 0]
+  CreatedAt        datetime2     [not null, default: `SYSUTCDATETIME()`]
+  Note: 'TargetRoleId HOẶC TargetEmployeeId phải khác NULL.'
+}
+
+// =============================================================================
+// QUAN HỆ TỔNG QUAN
+// =============================================================================
+// 1-N:
+//   Role           1 - N  Employee
+//   Unit           1 - N  Medicine
+//   Manufacturer   1 - N  Medicine, MedicineBatch
+//   MedicineCat.   1 - N  Medicine
+//   Medicine       1 - N  MedicineBatch, SalesInvoiceLine, PurchaseReceiptLine,
+//                          StockWriteOffLine, InventoryAlert
+//   Supplier       1 - N  PurchaseReceipt, MedicineBatch
+//   Customer       1 - N  SalesInvoice
+//   Employee       1 - N  SalesInvoice, PurchaseReceipt, StockWriteOff, SalesReturn
+//   SalesInvoice   1 - N  SalesInvoiceLine, SalesReturn
+//   SalesReturn    1 - N  SalesReturnLine
+//   PurchaseReceipt 1 - N PurchaseReceiptLine
+//
+// 1-1:
+//   PurchaseReceiptLine 1 - 1 MedicineBatch  (mỗi dòng nhập sinh đúng 1 lô)
+//
+// N-N (đã tách qua bảng trung gian):
+//   SalesInvoice    N - N  Medicine          qua  SalesInvoiceLine
+//   PurchaseReceipt N - N  Medicine          qua  PurchaseReceiptLine
+//   StockWriteOff   N - N  MedicineBatch     qua  StockWriteOffLine
+//   SalesReturn     N - N  SalesInvoiceLine  qua  SalesReturnLine
+// =============================================================================

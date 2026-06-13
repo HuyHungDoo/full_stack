@@ -1,0 +1,931 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Giải thích CSDL — PharmacyFinance</title>
+<style>
+  :root {
+    --bg: #f8fafc;
+    --panel: #ffffff;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --brand: #0ea5e9;
+    --brand-soft: #e0f2fe;
+    --accent: #10b981;
+    --accent-soft: #d1fae5;
+    --warn: #f59e0b;
+    --warn-soft: #fef3c7;
+    --danger: #ef4444;
+    --danger-soft: #fee2e2;
+    --pk: #6366f1;
+    --pk-soft: #e0e7ff;
+    --fk: #f97316;
+    --fk-soft: #ffedd5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.55; }
+
+  .layout { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  aside.sidebar { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; background: #0f172a; color: #cbd5e1; padding: 24px 16px; }
+  aside.sidebar h2 { color: #fff; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; margin: 0 0 12px 4px; }
+  aside.sidebar .brand { color: #fff; font-weight: 800; font-size: 18px; padding: 0 4px 16px; border-bottom: 1px solid #1e293b; margin-bottom: 12px; }
+  aside.sidebar a { display: block; color: #cbd5e1; text-decoration: none; padding: 7px 10px; border-radius: 8px; font-size: 13px; }
+  aside.sidebar a:hover { background: #1e293b; color: #fff; }
+  aside.sidebar a.section-title { color: #94a3b8; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-top: 14px; padding-left: 4px; pointer-events: none; }
+
+  main { padding: 36px 44px 80px; max-width: 1180px; }
+  header.hero { background: linear-gradient(135deg, #0ea5e9, #10b981); color: #fff; border-radius: 22px; padding: 28px 32px; margin-bottom: 28px; }
+  header.hero h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.3px; }
+  header.hero p { margin: 0; opacity: 0.92; }
+  header.hero .chips { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+  header.hero .chip { background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.25); padding: 5px 11px; border-radius: 999px; font-size: 12.5px; }
+
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 26px 28px; margin-bottom: 22px; }
+  section > h2 { margin: 0 0 14px; font-size: 22px; color: var(--ink); border-bottom: 2px solid var(--brand-soft); padding-bottom: 8px; }
+  section > h3 { margin: 24px 0 10px; font-size: 17px; color: var(--ink); }
+
+  .module-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 8px; }
+  .module-card { border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; background: #fbfdff; }
+  .module-card h4 { margin: 0 0 4px; font-size: 14px; color: var(--brand); letter-spacing: 0.3px; text-transform: uppercase; }
+  .module-card p { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+  .module-card ul { margin: 0; padding-left: 18px; font-size: 13px; }
+
+  table.tbl { border-collapse: collapse; width: 100%; margin-top: 6px; font-size: 13.5px; }
+  table.tbl th, table.tbl td { padding: 9px 11px; text-align: left; vertical-align: top; }
+  table.tbl thead th { background: #f1f5f9; color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--line); }
+  table.tbl tbody tr { border-bottom: 1px solid var(--line); }
+  table.tbl tbody tr:last-child { border-bottom: 0; }
+  table.tbl td.code { font-family: "JetBrains Mono", Consolas, Menlo, monospace; color: var(--ink); white-space: nowrap; }
+  table.tbl td.type { font-family: "JetBrains Mono", Consolas, Menlo, monospace; color: var(--muted); white-space: nowrap; font-size: 12.5px; }
+
+  .table-card { border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; margin-bottom: 22px; background: #ffffff; }
+  .table-card .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 6px; flex-wrap: wrap; }
+  .table-card .title-row h3 { margin: 0; font-size: 19px; }
+  .table-card .table-name { font-family: "JetBrains Mono", Consolas, Menlo, monospace; color: var(--brand); font-weight: 700; }
+  .table-card .table-vi { color: var(--muted); font-weight: 500; font-size: 14px; }
+  .table-card .reason { background: #fef9c3; border-left: 4px solid var(--warn); padding: 10px 14px; border-radius: 8px; margin: 12px 0 16px; font-size: 13.5px; color: #713f12; }
+  .table-card .reason b { color: #854d0e; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.3px; }
+  .badge.pk { background: var(--pk-soft); color: var(--pk); }
+  .badge.fk { background: var(--fk-soft); color: var(--fk); }
+  .badge.uq { background: var(--accent-soft); color: var(--accent); }
+  .badge.nn { background: #eef2ff; color: #4f46e5; }
+  .badge.idx { background: #f1f5f9; color: var(--muted); }
+  .badge.ck { background: var(--brand-soft); color: var(--brand); }
+
+  .rels { margin-top: 14px; }
+  .rels h5 { margin: 0 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+  .rels ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
+  .rels li { margin-bottom: 4px; }
+
+  code, .mono { font-family: "JetBrains Mono", Consolas, Menlo, monospace; background: #f1f5f9; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; color: #334155; }
+  pre { background: #0f172a; color: #e2e8f0; padding: 16px 18px; border-radius: 12px; overflow-x: auto; font-size: 12.5px; line-height: 1.5; }
+  pre code { background: transparent; padding: 0; color: inherit; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+  .note { background: #ecfeff; border-left: 4px solid #06b6d4; padding: 10px 14px; border-radius: 8px; margin: 10px 0; font-size: 13.5px; color: #155e75; }
+  .danger-note { background: var(--danger-soft); border-left: 4px solid var(--danger); padding: 10px 14px; border-radius: 8px; margin: 10px 0; font-size: 13.5px; color: #7f1d1d; }
+
+  .toc-anchor { display: block; position: relative; top: -10px; visibility: hidden; }
+
+  @media (max-width: 920px) {
+    .layout { grid-template-columns: 1fr; }
+    aside.sidebar { position: static; height: auto; }
+    main { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand">📊 PharmacyFinance</div>
+  <a href="#tong-quan" class="section-title">Tổng quan</a>
+  <a href="#tong-quan">Giới thiệu hệ thống</a>
+  <a href="#kien-truc">Kiến trúc 8 module</a>
+  <a href="#quy-uoc">Quy ước thiết kế</a>
+
+  <a href="#" class="section-title">Danh mục chung</a>
+  <a href="#tbl-role"><code>Role</code></a>
+  <a href="#tbl-employee"><code>Employee</code></a>
+  <a href="#tbl-unit"><code>Unit</code></a>
+  <a href="#tbl-medicinecategory"><code>MedicineCategory</code></a>
+  <a href="#tbl-supplier"><code>Supplier</code></a>
+  <a href="#tbl-manufacturer"><code>Manufacturer</code></a>
+
+  <a href="#" class="section-title">Thuốc &amp; Lô</a>
+  <a href="#tbl-medicine"><code>Medicine</code></a>
+  <a href="#tbl-medicinebatch"><code>MedicineBatch</code></a>
+
+  <a href="#" class="section-title">Khách hàng</a>
+  <a href="#tbl-customer"><code>Customer</code></a>
+
+  <a href="#" class="section-title">Nhập hàng</a>
+  <a href="#tbl-purchasereceipt"><code>PurchaseReceipt</code></a>
+  <a href="#tbl-purchasereceiptline"><code>PurchaseReceiptLine</code></a>
+
+  <a href="#" class="section-title">Bán hàng</a>
+  <a href="#tbl-salesinvoice"><code>SalesInvoice</code></a>
+  <a href="#tbl-salesinvoiceline"><code>SalesInvoiceLine</code></a>
+
+  <a href="#" class="section-title">Trả hàng</a>
+  <a href="#tbl-salesreturn"><code>SalesReturn</code></a>
+  <a href="#tbl-salesreturnline"><code>SalesReturnLine</code></a>
+
+  <a href="#" class="section-title">Hủy hàng</a>
+  <a href="#tbl-stockwriteoff"><code>StockWriteOff</code></a>
+  <a href="#tbl-stockwriteoffline"><code>StockWriteOffLine</code></a>
+
+  <a href="#" class="section-title">Cảnh báo</a>
+  <a href="#tbl-inventoryalert"><code>InventoryAlert</code></a>
+  <a href="#tbl-notification"><code>Notification</code></a>
+
+  <a href="#" class="section-title">Quan hệ &amp; Workflow</a>
+  <a href="#relations">Mối quan hệ tổng quan</a>
+  <a href="#workflows">Luồng nghiệp vụ</a>
+</aside>
+
+<main>
+
+<!-- ============================== HERO ============================== -->
+<header class="hero">
+  <h1>Giải thích Cơ sở dữ liệu PharmacyFinance</h1>
+  <p>Hệ thống quản lý tài chính nhà thuốc — 19 bảng, chuẩn hóa 3NF, SQL Server. Tài liệu giải thích từng bảng, từng cột, lý do tồn tại và mối quan hệ.</p>
+  <div class="chips">
+    <span class="chip">Microsoft SQL Server</span>
+    <span class="chip">1 nhà thuốc duy nhất</span>
+    <span class="chip">19 bảng</span>
+    <span class="chip">Chuẩn 3NF</span>
+    <span class="chip">Doanh thu · Chi phí · Lô · HSD · Hủy hàng</span>
+  </div>
+</header>
+
+<!-- ============================== TỔNG QUAN ============================== -->
+<section id="tong-quan">
+  <h2>1. Tổng quan hệ thống</h2>
+  <p>
+    Đây là cơ sở dữ liệu cho ứng dụng quản lý tài chính của <b>một nhà thuốc duy nhất</b> (không có chuỗi/chi nhánh).
+    Hệ thống phục vụ 2 nhóm người dùng nội bộ: <b>Chủ nhà thuốc / Admin</b> và <b>Nhân viên bán hàng</b>.
+  </p>
+  <p>Phạm vi tài chính được hỗ trợ:</p>
+  <ul>
+    <li><b>Doanh thu</b> bán thuốc qua hóa đơn (<code>SalesInvoice</code> + <code>SalesInvoiceLine</code>).</li>
+    <li><b>Chi phí nhập hàng</b> qua phiếu nhập từ nhà cung cấp (<code>PurchaseReceipt</code>).</li>
+    <li><b>Lợi nhuận gộp</b> tính chính xác qua <code>CostPriceSnapshot</code> trên từng dòng bán (FIFO theo lô).</li>
+    <li><b>Quản lý lô / hạn sử dụng</b> (<code>MedicineBatch</code>) — mỗi lô có giá nhập và HSD riêng.</li>
+    <li><b>Trả hàng</b> (<code>SalesReturn</code>) — giảm doanh thu thực, trả tồn về lô gốc.</li>
+    <li><b>Hủy hàng hết hạn</b> (<code>StockWriteOff</code>) — ghi nhận chi phí hủy hàng, ảnh hưởng lợi nhuận.</li>
+  </ul>
+
+  <h3 id="kien-truc">Kiến trúc 8 module</h3>
+  <div class="module-grid">
+    <div class="module-card">
+      <h4>M1 · Danh mục chung</h4>
+      <p>Master data & người dùng.</p>
+      <ul><li><code>Role</code></li><li><code>Employee</code></li><li><code>Unit</code></li><li><code>MedicineCategory</code></li><li><code>Supplier</code></li><li><code>Manufacturer</code></li></ul>
+    </div>
+    <div class="module-card">
+      <h4>M2 · Thuốc &amp; Lô</h4>
+      <p>Master thuốc và lô hàng (tồn kho thực).</p>
+      <ul><li><code>Medicine</code></li><li><code>MedicineBatch</code></li></ul>
+    </div>
+    <div class="module-card">
+      <h4>M3 · Khách hàng</h4>
+      <p>Khách lẻ + khách có thông tin.</p>
+      <ul><li><code>Customer</code></li></ul>
+    </div>
+    <div class="module-card">
+      <h4>M4 · Nhập hàng</h4>
+      <p>Chi phí mua hàng từ NCC.</p>
+      <ul><li><code>PurchaseReceipt</code></li><li><code>PurchaseReceiptLine</code></li></ul>
+    </div>
+    <div class="module-card">
+      <h4>M5 · Bán hàng</h4>
+      <p>Doanh thu chính.</p>
+      <ul><li><code>SalesInvoice</code></li><li><code>SalesInvoiceLine</code></li></ul>
+    </div>
+    <div class="module-card">
+      <h4>M6 · Trả hàng</h4>
+      <p>Giảm doanh thu thực.</p>
+      <ul><li><code>SalesReturn</code></li><li><code>SalesReturnLine</code></li></ul>
+    </div>
+    <div class="module-card">
+      <h4>M7 · Hủy hàng</h4>
+      <p>Chi phí hủy lô hết hạn.</p>
+      <ul><li><code>StockWriteOff</code></li><li><code>StockWriteOffLine</code></li></ul>
+    </div>
+    <div class="module-card">
+      <h4>M8 · Cảnh báo</h4>
+      <p>Cảnh báo tồn thấp / HSD &amp; thông báo nội bộ.</p>
+      <ul><li><code>InventoryAlert</code></li><li><code>Notification</code></li></ul>
+    </div>
+  </div>
+
+  <h3 id="quy-uoc">Quy ước thiết kế</h3>
+  <ul>
+    <li><b>Khóa chính (PK):</b> dùng <code>VARCHAR</code> đọc được (vd <code>SP001</code>, <code>HD000123</code>, <code>LOT-SP010-01</code>) cho dễ debug ở giai đoạn dự án học tập.</li>
+    <li><b>Tiền tệ:</b> luôn dùng <code>DECIMAL(18, 2)</code> — chính xác, không mất số lẻ như <code>FLOAT</code>.</li>
+    <li><b>Ngày giờ:</b> <code>DATETIME2(0)</code> (mới hơn <code>DATETIME</code>) hoặc <code>DATE</code> tùy ngữ cảnh.</li>
+    <li><b>Tiếng Việt có dấu:</b> dùng <code>NVARCHAR</code> (Unicode) cho mọi cột chứa tiếng Việt.</li>
+    <li><b>Soft-delete:</b> các bảng master như <code>Medicine</code>, <code>Employee</code>, <code>Supplier</code> dùng <code>IsActive BIT</code> thay vì xóa cứng (vì có thể đang được tham chiếu trong chứng từ).</li>
+    <li><b>Snapshot trên hóa đơn:</b> các cột <code>MedicineNameSnapshot</code>, <code>UnitNameSnapshot</code>, <code>CostPriceSnapshot</code> dư thừa có chủ đích — để giữ tính bất biến của chứng từ tài chính khi master data sau này thay đổi.</li>
+  </ul>
+
+  <div class="legend">
+    <span><span class="badge pk">PK</span> Khóa chính</span>
+    <span><span class="badge fk">FK</span> Khóa ngoại</span>
+    <span><span class="badge uq">UQ</span> Duy nhất</span>
+    <span><span class="badge nn">NN</span> Không NULL</span>
+    <span><span class="badge ck">CHECK</span> Ràng buộc kiểm tra</span>
+    <span><span class="badge idx">IDX</span> Có index riêng</span>
+  </div>
+</section>
+
+<!-- ============================== M1: DANH MỤC CHUNG ============================== -->
+
+<!-- =========== Role =========== -->
+<section id="tbl-role" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">Role</span> &nbsp;<span class="table-vi">— Vai trò người dùng</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Tách <b>vai trò</b> ra khỏi <code>Employee</code> để đạt 3NF: nếu lưu chuỗi <code>"Admin"</code>, <code>"Nhân viên"</code> ngay trong Employee thì khi muốn đổi tên vai trò sẽ phải sửa nhiều dòng, dễ sai chính tả. Có bảng riêng → đổi tên 1 dòng, mọi nhân viên đều đọc đúng tên mới.
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">RoleId</td><td class="type">VARCHAR(20)</td><td><span class="badge pk">PK</span></td><td>Mã vai trò viết hoa: <code>ADMIN</code>, <code>STAFF</code>.</td></tr>
+      <tr><td class="code">RoleName</td><td class="type">NVARCHAR(50)</td><td><span class="badge nn">NN</span> <span class="badge uq">UQ</span></td><td>Tên hiển thị tiếng Việt: "Quản trị viên", "Nhân viên bán hàng".</td></tr>
+      <tr><td class="code">Description</td><td class="type">NVARCHAR(200)</td><td></td><td>Mô tả ngắn về quyền hạn của vai trò.</td></tr>
+    </tbody>
+  </table>
+  <div class="rels">
+    <h5>Quan hệ</h5>
+    <ul>
+      <li>1 <code>Role</code> — N <code>Employee</code> (qua <code>Employee.RoleId</code>).</li>
+      <li>1 <code>Role</code> — N <code>Notification</code> (qua <code>Notification.TargetRoleId</code>): cho phép gửi thông báo cho cả vai trò.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- =========== Employee =========== -->
+<section id="tbl-employee" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">Employee</span> &nbsp;<span class="table-vi">— Nhân viên / tài khoản đăng nhập</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Đây là <b>chủ thể của mọi nghiệp vụ tài chính</b> — ai lập hóa đơn, ai nhập hàng, ai hủy hàng đều cần truy vết. Bảng này gộp luôn thông tin tài khoản (Username/PasswordHash) vì với nhà thuốc nhỏ, 1 nhân viên = đúng 1 tài khoản — không cần tách bảng <code>Account</code> riêng (tốn 1 bảng, thêm 1 JOIN khi đăng nhập).
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">EmployeeId</td><td class="type">VARCHAR(20)</td><td><span class="badge pk">PK</span></td><td>Mã nhân viên dạng <code>NV001</code>, <code>NV002</code>…</td></tr>
+      <tr><td class="code">FullName</td><td class="type">NVARCHAR(100)</td><td><span class="badge nn">NN</span></td><td>Họ tên đầy đủ.</td></tr>
+      <tr><td class="code">Phone</td><td class="type">VARCHAR(20)</td><td></td><td>Số điện thoại liên hệ.</td></tr>
+      <tr><td class="code">Email</td><td class="type">VARCHAR(100)</td><td><span class="badge nn">NN</span> <span class="badge uq">UQ</span></td><td>Email — đăng nhập bằng email theo FE hiện tại.</td></tr>
+      <tr><td class="code">Username</td><td class="type">VARCHAR(50)</td><td><span class="badge nn">NN</span> <span class="badge uq">UQ</span></td><td>Tên đăng nhập (vd <code>admin01</code>).</td></tr>
+      <tr><td class="code">PasswordHash</td><td class="type">VARCHAR(255)</td><td><span class="badge nn">NN</span></td><td>Mật khẩu đã băm bằng bcrypt/argon2 — <b>không bao giờ lưu plaintext</b>.</td></tr>
+      <tr><td class="code">RoleId</td><td class="type">VARCHAR(20)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → Role</span></td><td>Vai trò của nhân viên.</td></tr>
+      <tr><td class="code">IsActive</td><td class="type">BIT</td><td><span class="badge nn">NN</span> default <code>1</code></td><td>1 = đang làm việc; 0 = đã nghỉ/vô hiệu hóa đăng nhập.</td></tr>
+      <tr><td class="code">IsRoot</td><td class="type">BIT</td><td><span class="badge nn">NN</span> default <code>0</code></td><td>1 = tài khoản Chủ nhà thuốc — không được xóa/đổi vai trò bởi admin khác.</td></tr>
+      <tr><td class="code">HireDate</td><td class="type">DATE</td><td></td><td>Ngày vào làm.</td></tr>
+      <tr><td class="code">CreatedAt</td><td class="type">DATETIME2(0)</td><td><span class="badge nn">NN</span></td><td>Thời điểm tạo tài khoản (mặc định <code>SYSUTCDATETIME()</code>).</td></tr>
+    </tbody>
+  </table>
+  <div class="rels">
+    <h5>Quan hệ</h5>
+    <ul>
+      <li>N <code>Employee</code> — 1 <code>Role</code>.</li>
+      <li>1 <code>Employee</code> — N <code>SalesInvoice</code>, <code>PurchaseReceipt</code>, <code>SalesReturn</code>, <code>StockWriteOff</code> (người tạo chứng từ).</li>
+      <li>1 <code>Employee</code> — N <code>InventoryAlert</code> (qua <code>CreatedBy</code> / <code>ResolvedBy</code>).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- =========== Unit =========== -->
+<section id="tbl-unit" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">Unit</span> &nbsp;<span class="table-vi">— Đơn vị tính</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> FE đang nhập đơn vị tính thành text tự do — dễ bị <code>"viên"</code> vs <code>"Viên"</code> vs <code>"VIEN"</code>. Tách thành bảng để chuẩn hóa từ vựng + dropdown trên FE. Đạt 3NF: mỗi đơn vị có 1 dòng duy nhất.
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">UnitId</td><td class="type">VARCHAR(20)</td><td><span class="badge pk">PK</span></td><td>Mã viết tắt: <code>VIEN</code>, <code>VI</code>, <code>HOP</code>, <code>CHAI</code>…</td></tr>
+      <tr><td class="code">UnitName</td><td class="type">NVARCHAR(50)</td><td><span class="badge nn">NN</span> <span class="badge uq">UQ</span></td><td>Tên hiển thị: "Viên", "Vỉ", "Hộp", "Chai", "Gói", "Lọ", "Tuýp", "Cái".</td></tr>
+    </tbody>
+  </table>
+  <div class="rels">
+    <h5>Quan hệ</h5>
+    <ul><li>1 <code>Unit</code> — N <code>Medicine</code>.</li></ul>
+  </div>
+</section>
+
+<!-- =========== MedicineCategory =========== -->
+<section id="tbl-medicinecategory" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">MedicineCategory</span> &nbsp;<span class="table-vi">— Nhóm thuốc</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Nhóm thuốc (Giảm đau, Kháng sinh, Vitamin, Tiêu hóa…) có thể có mô tả, biểu tượng riêng. Tách bảng giúp filter trên FE và lập báo cáo doanh thu theo nhóm dễ dàng.
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">CategoryId</td><td class="type">VARCHAR(30)</td><td><span class="badge pk">PK</span></td><td>Mã nhóm (vd <code>GIAM_DAU</code>).</td></tr>
+      <tr><td class="code">CategoryName</td><td class="type">NVARCHAR(150)</td><td><span class="badge nn">NN</span> <span class="badge uq">UQ</span></td><td>Tên nhóm: "Thuốc giảm đau, hạ sốt, kháng viêm"…</td></tr>
+      <tr><td class="code">Description</td><td class="type">NVARCHAR(500)</td><td></td><td>Mô tả chi tiết (tùy chọn).</td></tr>
+    </tbody>
+  </table>
+  <div class="rels">
+    <h5>Quan hệ</h5>
+    <ul><li>1 <code>MedicineCategory</code> — N <code>Medicine</code>.</li></ul>
+  </div>
+</section>
+
+<!-- =========== Supplier =========== -->
+<section id="tbl-supplier" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">Supplier</span> &nbsp;<span class="table-vi">— Nhà cung cấp</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> FE đang lưu <code>supplierName</code> dạng chuỗi — không thể tổng hợp "nhập từ NCC X bao nhiêu tiền tháng này", cũng không truy vết được NCC đã cấp lô nào. Bảng <code>Supplier</code> độc lập là bắt buộc cho mô-đun nhập hàng đúng nghiệp vụ.
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">SupplierId</td><td class="type">VARCHAR(20)</td><td><span class="badge pk">PK</span></td><td>Mã NCC (vd <code>NCC001</code>).</td></tr>
+      <tr><td class="code">SupplierName</td><td class="type">NVARCHAR(150)</td><td><span class="badge nn">NN</span> <span class="badge uq">UQ</span></td><td>Tên công ty NCC. Unique để tránh trùng.</td></tr>
+      <tr><td class="code">Email</td><td class="type">VARCHAR(100)</td><td></td><td>Email liên hệ (tùy chọn).</td></tr>
+      <tr><td class="code">Address</td><td class="type">NVARCHAR(255)</td><td></td><td>Địa chỉ kho/văn phòng NCC (tùy chọn).</td></tr>
+      <tr><td class="code">IsActive</td><td class="type">BIT</td><td><span class="badge nn">NN</span> default <code>1</code></td><td>1 = còn hợp tác; 0 = ngừng (soft-delete).</td></tr>
+    </tbody>
+  </table>
+  <div class="rels">
+    <h5>Quan hệ</h5>
+    <ul>
+      <li>1 <code>Supplier</code> — N <code>PurchaseReceipt</code>.</li>
+      <li>1 <code>Supplier</code> — N <code>MedicineBatch</code> (để biết lô này do NCC nào cấp).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- =========== Manufacturer =========== -->
+<section id="tbl-manufacturer" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">Manufacturer</span> &nbsp;<span class="table-vi">— Hãng sản xuất</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Phân biệt rõ <b>"Nhà cung cấp"</b> (đối tác bán hàng cho nhà thuốc) và <b>"Hãng sản xuất"</b> (in trên bao bì thuốc). VD: NCC "Dược phẩm Minh Phúc" có thể bán thuốc của nhiều hãng "Sanofi", "Bayer"…
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">ManufacturerId</td><td class="type">VARCHAR(20)</td><td><span class="badge pk">PK</span></td><td>Mã hãng (vd <code>SANOFI</code>).</td></tr>
+      <tr><td class="code">ManufacturerName</td><td class="type">NVARCHAR(150)</td><td><span class="badge nn">NN</span> <span class="badge uq">UQ</span></td><td>Tên hãng SX.</td></tr>
+      <tr><td class="code">Country</td><td class="type">NVARCHAR(100)</td><td></td><td>Quốc gia (Việt Nam, Pháp, Đức…).</td></tr>
+    </tbody>
+  </table>
+  <div class="rels">
+    <h5>Quan hệ</h5>
+    <ul>
+      <li>1 <code>Manufacturer</code> — N <code>Medicine</code> (hãng "mặc định" của thuốc).</li>
+      <li>1 <code>Manufacturer</code> — N <code>MedicineBatch</code> (lô cụ thể có thể override).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================== M2: THUỐC & LÔ ============================== -->
+
+<!-- =========== Medicine =========== -->
+<section id="tbl-medicine" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">Medicine</span> &nbsp;<span class="table-vi">— Master danh mục thuốc</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Đây là "thẻ thuốc" — chứa thông tin <b>không phụ thuộc</b> vào lô cụ thể: tên, mã đăng ký, đơn vị tính, giá niêm yết, mô tả thành phần/công dụng/liều dùng. <br>
+    <b>Quan trọng:</b> không lưu số lượng tồn ở đây — vì tồn kho phải tính từ các lô. Cũng không lưu giá vốn — vì giá vốn khác nhau giữa các đợt nhập.
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">MedicineId</td><td class="type">VARCHAR(30)</td><td><span class="badge pk">PK</span></td><td>Mã thuốc nội bộ: <code>SP001</code>, <code>SP002</code>…</td></tr>
+      <tr><td class="code">MedicineName</td><td class="type">NVARCHAR(200)</td><td><span class="badge nn">NN</span></td><td>Tên thuốc đầy đủ (vd "Paracetamol 500mg").</td></tr>
+      <tr><td class="code">CategoryId</td><td class="type">VARCHAR(30)</td><td><span class="badge fk">FK → MedicineCategory</span></td><td>Nhóm thuốc. NULL được phép — thuốc có thể chưa phân nhóm.</td></tr>
+      <tr><td class="code">UnitId</td><td class="type">VARCHAR(20)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → Unit</span></td><td>Đơn vị tính cơ bản (Viên/Hộp/…). Bắt buộc.</td></tr>
+      <tr><td class="code">ManufacturerId</td><td class="type">VARCHAR(20)</td><td><span class="badge fk">FK → Manufacturer</span></td><td>Hãng SX mặc định. NULL nếu chưa biết.</td></tr>
+      <tr><td class="code">ProductType</td><td class="type">NVARCHAR(50)</td><td><span class="badge nn">NN</span> <span class="badge ck">CHECK</span></td><td>'Thuốc kê đơn' / 'Thuốc không kê đơn' / 'Vật tư y tế'. <b>Đã bao hàm</b> tính chất kê đơn hay không.</td></tr>
+      <tr><td class="code">DrugRegistrationCode</td><td class="type">NVARCHAR(80)</td><td></td><td>Số đăng ký lưu hành (vd <code>VD-12345-19</code>) — pháp lý.</td></tr>
+      <tr><td class="code">ListPrice</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>Giá <b>niêm yết hiện hành</b> — giá mặc định khi bán. Đổi giá chỉ sửa 1 dòng.</td></tr>
+      <tr><td class="code">MinStock</td><td class="type">INT</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>Ngưỡng tồn tối thiểu — dưới mức này sẽ sinh cảnh báo.</td></tr>
+      <tr><td class="code">IsActive</td><td class="type">BIT</td><td><span class="badge nn">NN</span> default <code>1</code></td><td>0 = ngừng kinh doanh (soft-delete, giữ lịch sử).</td></tr>
+      <tr><td class="code">Ingredient</td><td class="type">NVARCHAR(MAX)</td><td></td><td>Thành phần hoạt chất.</td></tr>
+      <tr><td class="code">[Usage]</td><td class="type">NVARCHAR(MAX)</td><td></td><td>Công dụng / chỉ định. Đặt trong <code>[]</code> vì <code>Usage</code> là keyword.</td></tr>
+      <tr><td class="code">Dosage</td><td class="type">NVARCHAR(MAX)</td><td></td><td>Liều dùng và cách dùng.</td></tr>
+      <tr><td class="code">Route</td><td class="type">NVARCHAR(100)</td><td></td><td>Đường dùng: "Uống", "Tiêm", "Bôi", "Nhỏ mắt"…</td></tr>
+      <tr><td class="code">CreatedAt</td><td class="type">DATETIME2(0)</td><td><span class="badge nn">NN</span></td><td>Thời điểm thêm vào danh mục.</td></tr>
+      <tr><td class="code">UpdatedAt</td><td class="type">DATETIME2(0)</td><td><span class="badge nn">NN</span></td><td>Thời điểm cập nhật gần nhất (BE tự cập nhật).</td></tr>
+    </tbody>
+  </table>
+  <div class="rels">
+    <h5>Quan hệ</h5>
+    <ul>
+      <li>N <code>Medicine</code> — 1 <code>MedicineCategory</code> / <code>Unit</code> / <code>Manufacturer</code>.</li>
+      <li>1 <code>Medicine</code> — N <code>MedicineBatch</code> (1 thuốc nhiều lô).</li>
+      <li>1 <code>Medicine</code> — N <code>SalesInvoiceLine</code>, <code>PurchaseReceiptLine</code>, <code>StockWriteOffLine</code>, <code>InventoryAlert</code>.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- =========== MedicineBatch =========== -->
+<section id="tbl-medicinebatch" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">MedicineBatch</span> &nbsp;<span class="table-vi">— Lô thuốc (tồn kho thực)</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Đây là <b>chìa khóa của bài toán tài chính</b>. Mỗi đợt nhập sinh ra <b>một lô</b> với <b>giá nhập riêng</b> và <b>hạn sử dụng riêng</b>. Có lô mới biết:
+    <ul style="margin: 6px 0 0 0;">
+      <li>Tính COGS chính xác theo FIFO khi bán.</li>
+      <li>Lô nào sắp hết hạn để cảnh báo.</li>
+      <li>Khi lô hết hạn → biết chi phí hủy bao nhiêu (= giá nhập × số còn lại).</li>
+    </ul>
+    <b>Tồn kho 1 thuốc</b> = <code>SUM(CurrentQty)</code> các lô còn hạn — KHÔNG lưu trữ riêng.
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">BatchId</td><td class="type">VARCHAR(40)</td><td><span class="badge pk">PK</span></td><td>Mã lô nội bộ duy nhất: <code>LOT-SP001-01</code>. Đủ vai trò định danh, không cần mã lô NSX.</td></tr>
+      <tr><td class="code">MedicineId</td><td class="type">VARCHAR(30)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → Medicine</span></td><td>Thuộc thuốc nào.</td></tr>
+      <tr><td class="code">ImportPrice</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td><b>Giá nhập</b> của lô — dùng để tính lợi nhuận gộp & chi phí hủy.</td></tr>
+      <tr><td class="code">ImportDate</td><td class="type">DATE</td><td><span class="badge nn">NN</span></td><td>Ngày nhập lô vào kho.</td></tr>
+      <tr><td class="code">ExpiryDate</td><td class="type">DATE</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ ImportDate</span></td><td>Hạn sử dụng — sau ngày này lô bị tính là hết hạn.</td></tr>
+      <tr><td class="code">InitialQty</td><td class="type">INT</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>Số lượng ban đầu khi nhập — <b>không đổi</b>.</td></tr>
+      <tr><td class="code">CurrentQty</td><td class="type">INT</td><td><span class="badge nn">NN</span> <span class="badge ck">0 ≤ x ≤ InitialQty</span></td><td>Số lượng còn lại — giảm khi bán, hủy; tăng khi khách trả hàng.</td></tr>
+      <tr><td class="code">SupplierId</td><td class="type">VARCHAR(20)</td><td><span class="badge fk">FK → Supplier</span></td><td>NCC đã cấp lô này.</td></tr>
+      <tr><td class="code">ManufacturerId</td><td class="type">VARCHAR(20)</td><td><span class="badge fk">FK → Manufacturer</span></td><td>Hãng SX của lô (có thể override hãng mặc định ở <code>Medicine</code>).</td></tr>
+      <tr><td class="code">Note</td><td class="type">NVARCHAR(500)</td><td></td><td>Ghi chú riêng cho lô.</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    <b>Index bổ sung:</b>
+    <ul style="margin: 4px 0 0 0;">
+      <li><code>IX_Batch_Medicine_Expiry (MedicineId, ExpiryDate)</code> — tăng tốc truy vấn FIFO khi bán hàng (lấy lô có HSD gần nhất).</li>
+    </ul>
+  </div>
+  <div class="rels">
+    <h5>Quan hệ</h5>
+    <ul>
+      <li>N <code>MedicineBatch</code> — 1 <code>Medicine</code>.</li>
+      <li>1 <code>MedicineBatch</code> — 1 <code>PurchaseReceiptLine</code> (UNIQUE — mỗi lô gắn đúng 1 dòng nhập).</li>
+      <li>1 <code>MedicineBatch</code> — N <code>SalesInvoiceLine</code> (1 lô có thể được bán ra nhiều lần).</li>
+      <li>1 <code>MedicineBatch</code> — N <code>StockWriteOffLine</code> (lô bị hủy).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================== M3: KHÁCH HÀNG ============================== -->
+
+<!-- =========== Customer =========== -->
+<section id="tbl-customer" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">Customer</span> &nbsp;<span class="table-vi">— Khách hàng</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Dữ liệu khách hàng được <b>sinh ra từ chính các hóa đơn bán hàng</b> — khi NV nhập SĐT khách lúc tính tiền, BE sẽ tự upsert (insert nếu mới, update nếu có). Bảng giữ tối thiểu thông tin để phân tích doanh thu theo khách + xem lịch sử mua.
+    <br>
+    Bảng có một dòng đặc biệt: <code>CustomerId='KH000000'</code> = "Khách lẻ" — gán cho mọi hóa đơn không thu thông tin khách.
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">CustomerId</td><td class="type">VARCHAR(20)</td><td><span class="badge pk">PK</span></td><td>Mã KH: <code>KH000001</code>… (<code>KH000000</code> = khách lẻ).</td></tr>
+      <tr><td class="code">CustomerName</td><td class="type">NVARCHAR(100)</td><td><span class="badge nn">NN</span></td><td>Họ tên khách (do NV nhập từ HĐ).</td></tr>
+      <tr><td class="code">Phone</td><td class="type">VARCHAR(20)</td><td><span class="badge uq">UQ (filtered)</span></td><td>SĐT — UNIQUE khi có giá trị (NULL cho phép ở khách lẻ). Đây là <b>khóa nghiệp vụ</b> để upsert KH từ HĐ.</td></tr>
+      <tr><td class="code">Gender</td><td class="type">NVARCHAR(10)</td><td><span class="badge ck">CHECK</span></td><td>"Nam" / "Nữ" / "Khác" / NULL (tùy chọn).</td></tr>
+      <tr><td class="code">TotalSpent</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>Tổng tiền đã mua — cập nhật qua trigger hoặc backend mỗi lần phát sinh HĐ/trả hàng.</td></tr>
+      <tr><td class="code">CreatedAt</td><td class="type">DATETIME2(0)</td><td><span class="badge nn">NN</span></td><td>Ngày tạo hồ sơ khách (= ngày HĐ đầu tiên).</td></tr>
+    </tbody>
+  </table>
+  <div class="rels">
+    <h5>Quan hệ</h5>
+    <ul><li>1 <code>Customer</code> — N <code>SalesInvoice</code>.</li></ul>
+  </div>
+</section>
+
+<!-- ============================== M4: NHẬP HÀNG ============================== -->
+
+<!-- =========== PurchaseReceipt =========== -->
+<section id="tbl-purchasereceipt" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">PurchaseReceipt</span> &nbsp;<span class="table-vi">— Phiếu nhập hàng (header)</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Đây là <b>đầu vào chi phí mua hàng</b> — phần lớn chi phí của nhà thuốc. Mỗi lần nhập là 1 phiếu, có thể nhập nhiều thuốc cùng lúc từ 1 NCC. Lưu thành phiếu (header + lines) thay vì tạo lô đơn lẻ giúp:
+    <ul style="margin: 6px 0 0 0;">
+      <li>Tổng hợp chi phí nhập theo tháng/quý theo NCC.</li>
+      <li>In phiếu nhập / đối chiếu công nợ với NCC.</li>
+    </ul>
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">ReceiptId</td><td class="type">VARCHAR(30)</td><td><span class="badge pk">PK</span></td><td>Mã phiếu nhập: <code>PN000001</code>.</td></tr>
+      <tr><td class="code">SupplierId</td><td class="type">VARCHAR(20)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → Supplier</span></td><td>Nhập từ NCC nào.</td></tr>
+      <tr><td class="code">EmployeeId</td><td class="type">VARCHAR(20)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → Employee</span></td><td>Người tạo phiếu (Admin).</td></tr>
+      <tr><td class="code">ReceiptDate</td><td class="type">DATETIME2(0)</td><td><span class="badge nn">NN</span></td><td>Thời điểm nhập.</td></tr>
+      <tr><td class="code">TotalAmount</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>Tổng tiền phiếu = <code>SUM(LineTotal)</code>. Lưu để tra cứu nhanh.</td></tr>
+      <tr><td class="code">Status</td><td class="type">NVARCHAR(20)</td><td><span class="badge nn">NN</span> <span class="badge ck">CHECK</span></td><td>'DRAFT' / 'COMPLETED' / 'CANCELLED'.</td></tr>
+      <tr><td class="code">Note</td><td class="type">NVARCHAR(500)</td><td></td><td>Ghi chú phiếu.</td></tr>
+    </tbody>
+  </table>
+  <div class="rels">
+    <h5>Quan hệ</h5>
+    <ul>
+      <li>N <code>PurchaseReceipt</code> — 1 <code>Supplier</code> / 1 <code>Employee</code>.</li>
+      <li>1 <code>PurchaseReceipt</code> — N <code>PurchaseReceiptLine</code>.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- =========== PurchaseReceiptLine =========== -->
+<section id="tbl-purchasereceiptline" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">PurchaseReceiptLine</span> &nbsp;<span class="table-vi">— Chi tiết phiếu nhập</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Một phiếu có thể nhập nhiều thuốc — mỗi dòng là 1 sản phẩm. <b>Đặc biệt:</b> mỗi dòng nhập <b>sinh ra đúng 1 lô mới</b> trong <code>MedicineBatch</code> (quan hệ 1-1 qua <code>UNIQUE BatchId</code>). Nhờ đó truy vết được "lô X được nhập trong phiếu nào, từ NCC nào, ngày nào".
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">LineId</td><td class="type">VARCHAR(40)</td><td><span class="badge pk">PK</span></td><td>Mã dòng.</td></tr>
+      <tr><td class="code">ReceiptId</td><td class="type">VARCHAR(30)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → PurchaseReceipt</span></td><td>Thuộc phiếu nào.</td></tr>
+      <tr><td class="code">MedicineId</td><td class="type">VARCHAR(30)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → Medicine</span></td><td>Nhập thuốc nào.</td></tr>
+      <tr><td class="code">BatchId</td><td class="type">VARCHAR(40)</td><td><span class="badge nn">NN</span> <span class="badge uq">UQ</span> <span class="badge fk">FK → MedicineBatch</span></td><td>Lô sinh ra từ dòng này (UNIQUE → quan hệ 1-1).</td></tr>
+      <tr><td class="code">Quantity</td><td class="type">INT</td><td><span class="badge nn">NN</span> <span class="badge ck">&gt; 0</span></td><td>Số lượng nhập.</td></tr>
+      <tr><td class="code">UnitCost</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>Giá nhập / đơn vị (= <code>MedicineBatch.ImportPrice</code>).</td></tr>
+      <tr><td class="code">LineTotal</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>= <code>Quantity × UnitCost</code>.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================== M5: BÁN HÀNG ============================== -->
+
+<!-- =========== SalesInvoice =========== -->
+<section id="tbl-salesinvoice" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">SalesInvoice</span> &nbsp;<span class="table-vi">— Hóa đơn bán hàng (header)</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> <b>Đầu ra doanh thu chính</b> của nhà thuốc. Mỗi lần khách thanh toán → 1 hóa đơn. Header chứa thông tin chung; chi tiết các dòng nằm ở <code>SalesInvoiceLine</code>. <br>
+    <b>Snapshot khách hàng</b>: lưu tên/SĐT tại thời điểm xuất HĐ — nếu KH đổi tên sau này, HĐ cũ vẫn in đúng.
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">InvoiceId</td><td class="type">VARCHAR(30)</td><td><span class="badge pk">PK</span></td><td>Mã HĐ: <code>HD000123</code>.</td></tr>
+      <tr><td class="code">EmployeeId</td><td class="type">VARCHAR(20)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → Employee</span></td><td>Nhân viên lập HĐ.</td></tr>
+      <tr><td class="code">CustomerId</td><td class="type">VARCHAR(20)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → Customer</span></td><td>Khách hàng (dùng <code>KH000000</code> cho khách lẻ).</td></tr>
+      <tr><td class="code">CustomerNameSnapshot</td><td class="type">NVARCHAR(100)</td><td><span class="badge nn">NN</span></td><td>Snapshot tên KH tại thời điểm xuất HĐ.</td></tr>
+      <tr><td class="code">PhoneSnapshot</td><td class="type">VARCHAR(20)</td><td></td><td>Snapshot SĐT tại thời điểm xuất HĐ.</td></tr>
+      <tr><td class="code">InvoiceDate</td><td class="type">DATETIME2(0)</td><td><span class="badge nn">NN</span> <span class="badge idx">IDX</span></td><td>Thời điểm xuất HĐ. Index để báo cáo theo ngày/tháng nhanh.</td></tr>
+      <tr><td class="code">TotalAmount</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>Tổng tiền HĐ = <code>SUM(LineTotal)</code>.</td></tr>
+      <tr><td class="code">Status</td><td class="type">NVARCHAR(20)</td><td><span class="badge nn">NN</span> <span class="badge ck">CHECK</span></td><td>'COMPLETED' / 'CANCELLED' / 'RETURNED'. HĐ chỉ được ghi khi đã thu tiền xong (không có nháp).</td></tr>
+      <tr><td class="code">Note</td><td class="type">NVARCHAR(500)</td><td></td><td>Ghi chú.</td></tr>
+    </tbody>
+  </table>
+  <div class="rels">
+    <h5>Quan hệ</h5>
+    <ul>
+      <li>N <code>SalesInvoice</code> — 1 <code>Customer</code> / 1 <code>Employee</code>.</li>
+      <li>1 <code>SalesInvoice</code> — N <code>SalesInvoiceLine</code>.</li>
+      <li>1 <code>SalesInvoice</code> — N <code>SalesReturn</code> (1 HĐ có thể trả nhiều lần).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- =========== SalesInvoiceLine =========== -->
+<section id="tbl-salesinvoiceline" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">SalesInvoiceLine</span> &nbsp;<span class="table-vi">— Chi tiết hóa đơn (dòng bán)</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Mỗi dòng = 1 sản phẩm trong giỏ. <b>Đặc biệt:</b>
+    <ul style="margin: 6px 0 0 0;">
+      <li><code>BatchId</code> ghi rõ lô nào được xuất → trừ tồn đúng lô (FIFO theo HSD).</li>
+      <li><code>CostPriceSnapshot</code> lưu giá vốn lô tại thời điểm bán → tính lợi nhuận gộp ngay, không phụ thuộc giá nhập tương lai.</li>
+      <li>Nếu 1 thuốc cần lấy từ 2 lô khác nhau → tạo 2 dòng riêng cùng <code>MedicineId</code> nhưng khác <code>BatchId</code>.</li>
+    </ul>
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">LineId</td><td class="type">VARCHAR(40)</td><td><span class="badge pk">PK</span></td><td>Mã dòng.</td></tr>
+      <tr><td class="code">InvoiceId</td><td class="type">VARCHAR(30)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → SalesInvoice</span> <span class="badge idx">IDX</span></td><td>Thuộc HĐ nào.</td></tr>
+      <tr><td class="code">MedicineId</td><td class="type">VARCHAR(30)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → Medicine</span></td><td>Bán thuốc nào.</td></tr>
+      <tr><td class="code">BatchId</td><td class="type">VARCHAR(40)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → MedicineBatch</span></td><td>Lô được trừ tồn (FIFO).</td></tr>
+      <tr><td class="code">MedicineNameSnapshot</td><td class="type">NVARCHAR(200)</td><td><span class="badge nn">NN</span></td><td>Snapshot tên thuốc — giữ nguyên dù sau này đổi tên.</td></tr>
+      <tr><td class="code">UnitNameSnapshot</td><td class="type">NVARCHAR(50)</td><td><span class="badge nn">NN</span></td><td>Snapshot đơn vị tính.</td></tr>
+      <tr><td class="code">Quantity</td><td class="type">INT</td><td><span class="badge nn">NN</span> <span class="badge ck">&gt; 0</span></td><td>Số lượng bán.</td></tr>
+      <tr><td class="code">UnitPrice</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>Đơn giá tại thời điểm bán (snapshot từ <code>Medicine.ListPrice</code>).</td></tr>
+      <tr><td class="code">LineTotal</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>= <code>Quantity × UnitPrice</code>.</td></tr>
+      <tr><td class="code">CostPriceSnapshot</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td><b>Giá vốn snapshot</b> = <code>MedicineBatch.ImportPrice</code> tại thời điểm xuất → tính COGS chính xác.</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    <b>Lợi nhuận gộp 1 dòng</b> = <code>LineTotal − Quantity × CostPriceSnapshot</code>
+  </div>
+</section>
+
+<!-- ============================== M6: TRẢ HÀNG ============================== -->
+
+<!-- =========== SalesReturn =========== -->
+<section id="tbl-salesreturn" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">SalesReturn</span> &nbsp;<span class="table-vi">— Phiếu trả hàng (header)</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Khi khách trả hàng → <b>giảm doanh thu thực</b> + trả tồn về đúng lô đã xuất. Không sửa trực tiếp <code>SalesInvoice</code> mà lập phiếu riêng để giữ tính bất biến của hóa đơn gốc (nguyên tắc kế toán: bút toán đã ghi không xóa, chỉ ghi bút toán đối ứng).
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">ReturnId</td><td class="type">VARCHAR(30)</td><td><span class="badge pk">PK</span></td><td>Mã phiếu trả: <code>TR000001</code>.</td></tr>
+      <tr><td class="code">InvoiceId</td><td class="type">VARCHAR(30)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → SalesInvoice</span></td><td>Trả từ HĐ nào.</td></tr>
+      <tr><td class="code">EmployeeId</td><td class="type">VARCHAR(20)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → Employee</span></td><td>NV xử lý trả hàng.</td></tr>
+      <tr><td class="code">ReturnDate</td><td class="type">DATETIME2(0)</td><td><span class="badge nn">NN</span></td><td>Thời điểm trả.</td></tr>
+      <tr><td class="code">TotalRefund</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>Tổng tiền hoàn = <code>SUM(RefundAmount)</code>.</td></tr>
+      <tr><td class="code">Reason</td><td class="type">NVARCHAR(500)</td><td></td><td>Lý do trả (hỏng, sai thuốc, đổi ý…).</td></tr>
+      <tr><td class="code">Status</td><td class="type">NVARCHAR(20)</td><td><span class="badge nn">NN</span> <span class="badge ck">CHECK</span></td><td>'COMPLETED' / 'CANCELLED'.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- =========== SalesReturnLine =========== -->
+<section id="tbl-salesreturnline" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">SalesReturnLine</span> &nbsp;<span class="table-vi">— Chi tiết phiếu trả</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Cho phép trả <b>từng phần</b> 1 dòng HĐ (vd HĐ bán 10 viên, khách trả 3 viên). Mỗi dòng trả tham chiếu thẳng tới <code>InvoiceLineId</code> để biết lô gốc cần hoàn tồn.
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">LineId</td><td class="type">VARCHAR(40)</td><td><span class="badge pk">PK</span></td><td>Mã dòng trả.</td></tr>
+      <tr><td class="code">ReturnId</td><td class="type">VARCHAR(30)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → SalesReturn</span></td><td>Thuộc phiếu trả nào.</td></tr>
+      <tr><td class="code">InvoiceLineId</td><td class="type">VARCHAR(40)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → SalesInvoiceLine</span></td><td>Trả dòng HĐ nào (biết được lô gốc).</td></tr>
+      <tr><td class="code">Quantity</td><td class="type">INT</td><td><span class="badge nn">NN</span> <span class="badge ck">&gt; 0</span></td><td>Số lượng trả.</td></tr>
+      <tr><td class="code">RefundAmount</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>Tiền hoàn cho dòng này.</td></tr>
+      <tr><td class="code">Reason</td><td class="type">NVARCHAR(300)</td><td></td><td>Lý do trả dòng này (nếu chi tiết hơn header).</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================== M7: HỦY HÀNG ============================== -->
+
+<!-- =========== StockWriteOff =========== -->
+<section id="tbl-stockwriteoff" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">StockWriteOff</span> &nbsp;<span class="table-vi">— Phiếu hủy hàng (header)</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Khi lô <b>hết hạn</b> / hỏng / mất → phải lập phiếu hủy. <b>Phiếu hủy = bút toán chi phí</b> trong báo cáo P&amp;L. Nếu chỉ "ẩn lô" trên FE mà không ghi chứng từ → lợi nhuận sẽ bị tính sai (cao hơn thực tế).
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">WriteOffId</td><td class="type">VARCHAR(30)</td><td><span class="badge pk">PK</span></td><td>Mã phiếu hủy: <code>HUY000001</code>.</td></tr>
+      <tr><td class="code">EmployeeId</td><td class="type">VARCHAR(20)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → Employee</span></td><td>Người duyệt hủy.</td></tr>
+      <tr><td class="code">WriteOffDate</td><td class="type">DATETIME2(0)</td><td><span class="badge nn">NN</span></td><td>Thời điểm hủy.</td></tr>
+      <tr><td class="code">TotalCost</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>Tổng chi phí hủy = <code>SUM(LineCost)</code> = tổng giá vốn các lô bị hủy.</td></tr>
+      <tr><td class="code">Reason</td><td class="type">NVARCHAR(500)</td><td></td><td>'Hết hạn' / 'Hỏng' / 'Mất' / ghi chú.</td></tr>
+      <tr><td class="code">Status</td><td class="type">NVARCHAR(20)</td><td><span class="badge nn">NN</span> <span class="badge ck">CHECK</span></td><td>'DRAFT' / 'COMPLETED' / 'CANCELLED'.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- =========== StockWriteOffLine =========== -->
+<section id="tbl-stockwriteoffline" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">StockWriteOffLine</span> &nbsp;<span class="table-vi">— Chi tiết phiếu hủy</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> 1 phiếu có thể hủy nhiều lô của nhiều thuốc cùng lúc (vd cuối tháng quét toàn bộ lô đã hết hạn). Mỗi dòng = 1 lô bị hủy.
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">LineId</td><td class="type">VARCHAR(40)</td><td><span class="badge pk">PK</span></td><td>Mã dòng.</td></tr>
+      <tr><td class="code">WriteOffId</td><td class="type">VARCHAR(30)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → StockWriteOff</span></td><td>Thuộc phiếu hủy nào.</td></tr>
+      <tr><td class="code">BatchId</td><td class="type">VARCHAR(40)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → MedicineBatch</span></td><td>Hủy lô nào.</td></tr>
+      <tr><td class="code">MedicineId</td><td class="type">VARCHAR(30)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → Medicine</span></td><td>Thuốc tương ứng (denormalize để query nhanh).</td></tr>
+      <tr><td class="code">Quantity</td><td class="type">INT</td><td><span class="badge nn">NN</span> <span class="badge ck">&gt; 0</span></td><td>Số lượng bị hủy (= <code>CurrentQty</code> của lô tại thời điểm hủy).</td></tr>
+      <tr><td class="code">UnitCost</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>Snapshot <code>ImportPrice</code> của lô.</td></tr>
+      <tr><td class="code">LineCost</td><td class="type">DECIMAL(18,2)</td><td><span class="badge nn">NN</span> <span class="badge ck">≥ 0</span></td><td>= <code>Quantity × UnitCost</code> = chi phí hủy của dòng.</td></tr>
+      <tr><td class="code">Reason</td><td class="type">NVARCHAR(300)</td><td></td><td>Lý do hủy dòng (chi tiết hơn lý do phiếu nếu cần).</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================== M8: CẢNH BÁO ============================== -->
+
+<!-- =========== InventoryAlert =========== -->
+<section id="tbl-inventoryalert" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">InventoryAlert</span> &nbsp;<span class="table-vi">— Cảnh báo tồn kho</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Hệ thống tự động sinh cảnh báo khi tồn dưới ngưỡng hoặc lô sắp hết hạn. Admin có thể xử lý: nhập thêm, điều chỉnh tồn, hoặc từ chối.
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">AlertId</td><td class="type">VARCHAR(40)</td><td><span class="badge pk">PK</span></td><td>Mã cảnh báo.</td></tr>
+      <tr><td class="code">MedicineId</td><td class="type">VARCHAR(30)</td><td><span class="badge nn">NN</span> <span class="badge fk">FK → Medicine</span></td><td>Cảnh báo cho thuốc nào.</td></tr>
+      <tr><td class="code">AlertType</td><td class="type">NVARCHAR(30)</td><td><span class="badge nn">NN</span> <span class="badge ck">CHECK</span></td><td>'LOW_STOCK' / 'NEAR_EXPIRY' / 'EXPIRED'.</td></tr>
+      <tr><td class="code">StockSnapshot</td><td class="type">INT</td><td><span class="badge nn">NN</span></td><td>Snapshot tồn tại thời điểm sinh cảnh báo.</td></tr>
+      <tr><td class="code">MinStock</td><td class="type">INT</td><td><span class="badge nn">NN</span></td><td>Snapshot ngưỡng tối thiểu.</td></tr>
+      <tr><td class="code">Note</td><td class="type">NVARCHAR(500)</td><td></td><td>Ghi chú khi tạo cảnh báo.</td></tr>
+      <tr><td class="code">Status</td><td class="type">NVARCHAR(20)</td><td><span class="badge nn">NN</span> <span class="badge ck">CHECK</span></td><td>'PENDING' / 'RESOLVED' / 'REJECTED'.</td></tr>
+      <tr><td class="code">CreatedBy</td><td class="type">VARCHAR(20)</td><td><span class="badge fk">FK → Employee</span></td><td>Người tạo (NULL nếu do hệ thống tự sinh).</td></tr>
+      <tr><td class="code">CreatedAt</td><td class="type">DATETIME2(0)</td><td><span class="badge nn">NN</span></td><td>Thời điểm tạo.</td></tr>
+      <tr><td class="code">ResolvedBy</td><td class="type">VARCHAR(20)</td><td><span class="badge fk">FK → Employee</span></td><td>Admin xử lý.</td></tr>
+      <tr><td class="code">ResolvedAt</td><td class="type">DATETIME2(0)</td><td></td><td>Thời điểm xử lý xong.</td></tr>
+      <tr><td class="code">ResolutionType</td><td class="type">NVARCHAR(20)</td><td><span class="badge ck">CHECK</span></td><td>'RECEIPT' (nhập thêm) / 'ADJUSTMENT' (điều chỉnh) / 'REJECT' (từ chối).</td></tr>
+      <tr><td class="code">ResolutionNote</td><td class="type">NVARCHAR(500)</td><td></td><td>Ghi chú xử lý.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- =========== Notification =========== -->
+<section id="tbl-notification" class="table-card">
+  <div class="title-row">
+    <h3><span class="table-name">Notification</span> &nbsp;<span class="table-vi">— Thông báo nội bộ</span></h3>
+  </div>
+  <div class="reason">
+    <b>Tại sao có bảng này?</b> Khi có sự kiện cần báo (cảnh báo mới, admin xử lý xong cảnh báo, lô sắp hết hạn…) → ghi vào đây để FE hiển thị icon chuông. Linh hoạt: gửi cho 1 vai trò (broadcast) hoặc 1 nhân viên cụ thể.
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Cột</th><th>Kiểu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td class="code">NotificationId</td><td class="type">VARCHAR(40)</td><td><span class="badge pk">PK</span></td><td>Mã thông báo.</td></tr>
+      <tr><td class="code">TargetRoleId</td><td class="type">VARCHAR(20)</td><td><span class="badge fk">FK → Role</span></td><td>Gửi cho cả vai trò (vd tất cả ADMIN).</td></tr>
+      <tr><td class="code">TargetEmployeeId</td><td class="type">VARCHAR(20)</td><td><span class="badge fk">FK → Employee</span></td><td>Gửi cho 1 NV cụ thể.</td></tr>
+      <tr><td class="code">Message</td><td class="type">NVARCHAR(500)</td><td><span class="badge nn">NN</span></td><td>Nội dung thông báo.</td></tr>
+      <tr><td class="code">IsRead</td><td class="type">BIT</td><td><span class="badge nn">NN</span> default <code>0</code></td><td>0 = chưa đọc; 1 = đã đọc.</td></tr>
+      <tr><td class="code">CreatedAt</td><td class="type">DATETIME2(0)</td><td><span class="badge nn">NN</span></td><td>Thời điểm sinh.</td></tr>
+    </tbody>
+  </table>
+  <div class="danger-note">
+    <b>CHECK quan trọng:</b> <code>TargetRoleId IS NOT NULL OR TargetEmployeeId IS NOT NULL</code> — bắt buộc có ít nhất 1 trong 2 đích đến.
+  </div>
+</section>
+
+<!-- ============================== MỐI QUAN HỆ ============================== -->
+<section id="relations">
+  <h2>3. Mối quan hệ tổng quan</h2>
+
+  <h3>3.1. Quan hệ 1-N (một - nhiều)</h3>
+  <table class="tbl">
+    <thead><tr><th>Bảng cha</th><th>Bảng con</th><th>Qua khóa ngoại</th><th>Ý nghĩa nghiệp vụ</th></tr></thead>
+    <tbody>
+      <tr><td><code>Role</code></td><td><code>Employee</code></td><td><code>RoleId</code></td><td>1 vai trò có nhiều nhân viên.</td></tr>
+      <tr><td><code>Role</code></td><td><code>Notification</code></td><td><code>TargetRoleId</code></td><td>1 vai trò nhận nhiều thông báo broadcast.</td></tr>
+      <tr><td><code>Employee</code></td><td><code>SalesInvoice</code></td><td><code>EmployeeId</code></td><td>1 NV lập nhiều HĐ.</td></tr>
+      <tr><td><code>Employee</code></td><td><code>PurchaseReceipt</code></td><td><code>EmployeeId</code></td><td>1 NV lập nhiều phiếu nhập.</td></tr>
+      <tr><td><code>Employee</code></td><td><code>SalesReturn</code> / <code>StockWriteOff</code></td><td><code>EmployeeId</code></td><td>NV xử lý trả/hủy hàng.</td></tr>
+      <tr><td><code>Employee</code></td><td><code>InventoryAlert</code></td><td><code>CreatedBy</code>, <code>ResolvedBy</code></td><td>NV tạo và NV xử lý cảnh báo.</td></tr>
+      <tr><td><code>Unit</code></td><td><code>Medicine</code></td><td><code>UnitId</code></td><td>1 đơn vị tính dùng cho nhiều thuốc.</td></tr>
+      <tr><td><code>MedicineCategory</code></td><td><code>Medicine</code></td><td><code>CategoryId</code></td><td>1 nhóm chứa nhiều thuốc.</td></tr>
+      <tr><td><code>Manufacturer</code></td><td><code>Medicine</code> / <code>MedicineBatch</code></td><td><code>ManufacturerId</code></td><td>1 hãng SX nhiều thuốc / nhiều lô.</td></tr>
+      <tr><td><code>Supplier</code></td><td><code>PurchaseReceipt</code> / <code>MedicineBatch</code></td><td><code>SupplierId</code></td><td>1 NCC bán nhiều lần, nhiều lô.</td></tr>
+      <tr><td><code>Medicine</code></td><td><code>MedicineBatch</code></td><td><code>MedicineId</code></td><td><b>1 thuốc — N lô</b> (cốt lõi của bài toán).</td></tr>
+      <tr><td><code>Medicine</code></td><td><code>SalesInvoiceLine</code></td><td><code>MedicineId</code></td><td>1 thuốc xuất hiện trong nhiều dòng HĐ.</td></tr>
+      <tr><td><code>Medicine</code></td><td><code>InventoryAlert</code></td><td><code>MedicineId</code></td><td>1 thuốc có thể có nhiều lần cảnh báo.</td></tr>
+      <tr><td><code>MedicineBatch</code></td><td><code>SalesInvoiceLine</code></td><td><code>BatchId</code></td><td>1 lô có thể được bán nhiều lần.</td></tr>
+      <tr><td><code>MedicineBatch</code></td><td><code>StockWriteOffLine</code></td><td><code>BatchId</code></td><td>1 lô có thể được hủy (1 dòng hủy).</td></tr>
+      <tr><td><code>Customer</code></td><td><code>SalesInvoice</code></td><td><code>CustomerId</code></td><td>1 KH có thể có nhiều HĐ.</td></tr>
+      <tr><td><code>PurchaseReceipt</code></td><td><code>PurchaseReceiptLine</code></td><td><code>ReceiptId</code></td><td>1 phiếu nhập nhiều dòng.</td></tr>
+      <tr><td><code>SalesInvoice</code></td><td><code>SalesInvoiceLine</code></td><td><code>InvoiceId</code></td><td>1 HĐ nhiều dòng bán.</td></tr>
+      <tr><td><code>SalesInvoice</code></td><td><code>SalesReturn</code></td><td><code>InvoiceId</code></td><td>1 HĐ có thể bị trả nhiều lần (trả từng phần).</td></tr>
+      <tr><td><code>SalesReturn</code></td><td><code>SalesReturnLine</code></td><td><code>ReturnId</code></td><td>1 phiếu trả nhiều dòng.</td></tr>
+      <tr><td><code>SalesInvoiceLine</code></td><td><code>SalesReturnLine</code></td><td><code>InvoiceLineId</code></td><td>1 dòng HĐ có thể bị trả nhiều lần (từng phần).</td></tr>
+      <tr><td><code>StockWriteOff</code></td><td><code>StockWriteOffLine</code></td><td><code>WriteOffId</code></td><td>1 phiếu hủy nhiều dòng.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>3.2. Quan hệ 1-1 (một - một)</h3>
+  <table class="tbl">
+    <thead><tr><th>Bảng A</th><th>Bảng B</th><th>Cách thực hiện</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td><code>PurchaseReceiptLine</code></td><td><code>MedicineBatch</code></td><td><code>UNIQUE BatchId</code> trên dòng nhập</td><td>Mỗi dòng nhập sinh đúng 1 lô — truy vết "lô X được nhập từ phiếu nào".</td></tr>
+    </tbody>
+  </table>
+
+  <h3>3.3. Quan hệ N-N (nhiều - nhiều) đã tách qua bảng trung gian</h3>
+  <table class="tbl">
+    <thead><tr><th>Bảng A</th><th>Bảng B</th><th>Bảng trung gian</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td><code>SalesInvoice</code></td><td><code>Medicine</code></td><td><code>SalesInvoiceLine</code></td><td>1 HĐ bán nhiều thuốc; 1 thuốc bán trong nhiều HĐ.</td></tr>
+      <tr><td><code>PurchaseReceipt</code></td><td><code>Medicine</code></td><td><code>PurchaseReceiptLine</code></td><td>1 phiếu nhập nhiều thuốc; 1 thuốc nhập trong nhiều phiếu.</td></tr>
+      <tr><td><code>StockWriteOff</code></td><td><code>MedicineBatch</code></td><td><code>StockWriteOffLine</code></td><td>1 phiếu hủy nhiều lô; 1 lô có thể hủy trong nhiều phiếu (về lý thuyết).</td></tr>
+      <tr><td><code>SalesReturn</code></td><td><code>SalesInvoiceLine</code></td><td><code>SalesReturnLine</code></td><td>1 phiếu trả nhiều dòng HĐ; 1 dòng HĐ trả nhiều lần (từng phần).</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================== WORKFLOWS ============================== -->
+<section id="workflows">
+  <h2>4. Luồng nghiệp vụ minh họa</h2>
+
+  <h3>4.1. Nhập hàng</h3>
+<pre><code>[Admin] Tạo PurchaseReceipt(SupplierId, EmployeeId, ReceiptDate)
+        Với mỗi thuốc nhập:
+          1. INSERT MedicineBatch(BatchId = NEWID()/auto,
+                                   MedicineId, ImportPrice, ExpiryDate,
+                                   InitialQty, CurrentQty = InitialQty,
+                                   SupplierId, ManufacturerId)
+          2. INSERT PurchaseReceiptLine(ReceiptId, MedicineId, BatchId,
+                                         Quantity, UnitCost, LineTotal)
+        UPDATE PurchaseReceipt.TotalAmount = SUM(LineTotal)</code></pre>
+
+  <h3>4.2. Bán hàng (POS)</h3>
+<pre><code>[Staff] BƯỚC 0 — Xử lý khách hàng (upsert):
+          IF khách nhập SĐT THEN
+              SELECT CustomerId FROM Customer WHERE Phone = @phone
+              IF không tồn tại → INSERT Customer(CustomerName, Phone)
+          ELSE
+              CustomerId = 'KH000000'  -- khách lẻ
+        
+        Tạo SalesInvoice(EmployeeId, CustomerId,
+                          CustomerNameSnapshot, PhoneSnapshot, InvoiceDate)
+        Với mỗi sản phẩm trong giỏ:
+          1. Tìm lô FIFO:
+             SELECT TOP 1 BatchId, ImportPrice
+             FROM MedicineBatch
+             WHERE MedicineId = @M AND CurrentQty > 0 AND ExpiryDate >= GETDATE()
+             ORDER BY ExpiryDate ASC
+          2. Nếu lô không đủ, tách thành nhiều dòng (nhiều BatchId).
+          3. INSERT SalesInvoiceLine(
+               InvoiceId, MedicineId, BatchId,
+               MedicineNameSnapshot, UnitNameSnapshot,
+               Quantity, UnitPrice = Medicine.ListPrice,
+               LineTotal = Quantity * UnitPrice,
+               CostPriceSnapshot = MedicineBatch.ImportPrice)
+          4. UPDATE MedicineBatch SET CurrentQty -= Quantity WHERE BatchId = @B
+        UPDATE SalesInvoice.TotalAmount = SUM(LineTotal)
+        UPDATE Customer.TotalSpent += TotalAmount</code></pre>
+
+  <h3>4.3. Trả hàng</h3>
+<pre><code>[Staff] Tạo SalesReturn(InvoiceId, EmployeeId, ReturnDate)
+        Với mỗi dòng trả:
+          1. INSERT SalesReturnLine(ReturnId, InvoiceLineId, Quantity, RefundAmount)
+          2. UPDATE MedicineBatch SET CurrentQty += Quantity
+             WHERE BatchId = SalesInvoiceLine.BatchId  -- trả về đúng lô gốc
+        UPDATE SalesReturn.TotalRefund = SUM(RefundAmount)
+        Nếu mọi dòng HĐ đã trả hết → SalesInvoice.Status = 'RETURNED'
+        UPDATE Customer.TotalSpent -= TotalRefund</code></pre>
+
+  <h3>4.4. Hủy hàng hết hạn (cuối tháng / cron job)</h3>
+<pre><code>[Admin] Quét MedicineBatch WHERE ExpiryDate < TODAY AND CurrentQty > 0
+        Tạo StockWriteOff(EmployeeId, WriteOffDate, Reason='Hết hạn sử dụng')
+        Với mỗi lô:
+          1. INSERT StockWriteOffLine(
+               WriteOffId, BatchId, MedicineId,
+               Quantity = CurrentQty,
+               UnitCost = ImportPrice (snapshot),
+               LineCost = Quantity * UnitCost)
+          2. UPDATE MedicineBatch SET CurrentQty = 0
+        UPDATE StockWriteOff.TotalCost = SUM(LineCost)</code></pre>
+
+  <h3>4.5. Báo cáo lợi nhuận theo kỳ</h3>
+<pre><code>NetRevenue   = SUM(SalesInvoice.TotalAmount khi COMPLETED)
+              - SUM(SalesReturn.TotalRefund khi COMPLETED)
+
+COGS         = SUM(SalesInvoiceLine.Quantity * CostPriceSnapshot)
+              (chỉ tính các HĐ COMPLETED)
+
+GrossProfit  = NetRevenue - COGS
+
+DisposalCost = SUM(StockWriteOff.TotalCost khi COMPLETED)
+
+LợiNhuận     = GrossProfit - DisposalCost
+              (chưa trừ chi phí vận hành — vì hệ thống không quản lý)</code></pre>
+</section>
+
+<footer style="text-align:center; color: var(--muted); font-size: 12.5px; padding: 16px;">
+  📁 Tài liệu thuộc đồ án quản lý nhà thuốc · CSDL <code>PharmacyFinance</code> · 19 bảng · SQL Server · 3NF
+</footer>
+
+</main>
+</div>
+</body>
+</html>
