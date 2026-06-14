@@ -1,5 +1,7 @@
 import { query, queryOne } from '../config/db.js'
 import AppError from '../utils/AppError.js'
+import * as alertService from './alert.service.js'
+import * as stockWriteOffService from './stockWriteOff.service.js'
 
 // ============================================================
 // helper map
@@ -317,7 +319,30 @@ export async function create(data) {
   return await getById(data.medicineId)
 }
 
-export async function update(medicineId, data) {
+async function getSellableStock(medicineId) {
+  const row = await queryOne(
+    `SELECT ISNULL((
+      SELECT SUM(b.CurrentQty)
+      FROM dbo.MedicineBatch b
+      WHERE b.MedicineId = @id
+        AND b.ExpiryDate >= CAST(GETDATE() AS DATE)
+        AND b.CurrentQty > 0
+    ), 0) AS SellableStock`,
+    { id: medicineId },
+  )
+  return Number(row?.SellableStock || 0)
+}
+
+export async function update(medicineId, data, employeeId = null) {
+  if (data.isActive === false) {
+    const { isActive, ...rest } = data
+    await deactivate(medicineId, employeeId)
+    if (Object.keys(rest).length === 0) {
+      return await getById(medicineId)
+    }
+    data = rest
+  }
+
   const current = await queryOne(
     'SELECT MedicineId, UnitId FROM dbo.Medicine WHERE MedicineId = @id',
     { id: medicineId }
@@ -381,10 +406,10 @@ export async function update(medicineId, data) {
   return await getById(medicineId)
 }
 
-export async function deactivate(medicineId) {
+export async function deactivate(medicineId, employeeId = null) {
   const med = await queryOne(
-    'SELECT IsActive FROM dbo.Medicine WHERE MedicineId = @id',
-    { id: medicineId }
+    'SELECT IsActive, MedicineName FROM dbo.Medicine WHERE MedicineId = @id',
+    { id: medicineId },
   )
   if (!med) {
     throw new AppError('Không tìm thấy thuốc', 404, 'MEDICINE_NOT_FOUND')
@@ -393,25 +418,47 @@ export async function deactivate(medicineId) {
     throw new AppError('Thuốc này đã ngừng kinh doanh', 400, 'ALREADY_INACTIVE')
   }
 
-  // khong cho ngung khi con ton kho
-  const stockRow = await queryOne(
-    `SELECT ISNULL(SUM(CurrentQty), 0) AS TotalQty
-     FROM dbo.MedicineBatch
-     WHERE MedicineId = @id AND ExpiryDate >= CAST(GETDATE() AS DATE)`,
-    { id: medicineId }
-  )
-  if (stockRow.TotalQty > 0) {
+  const sellableStock = await getSellableStock(medicineId)
+  if (sellableStock > 0) {
     throw new AppError(
-      `Không thể ngừng kinh doanh khi còn ${stockRow.TotalQty} đơn vị tồn kho`,
+      `Không thể ngừng kinh doanh khi còn ${sellableStock} đơn vị tồn kho còn hạn`,
       400,
-      'STOCK_REMAINING'
+      'STOCK_REMAINING',
+    )
+  }
+
+  const expiredRow = await queryOne(
+    `SELECT ISNULL(SUM(CurrentQty), 0) AS ExpiredQty
+     FROM dbo.MedicineBatch
+     WHERE MedicineId = @id
+       AND CurrentQty > 0
+       AND ExpiryDate < CAST(GETDATE() AS DATE)`,
+    { id: medicineId },
+  )
+  const expiredQty = Number(expiredRow?.ExpiredQty || 0)
+
+  if (expiredQty > 0) {
+    if (!employeeId) {
+      throw new AppError(
+        `Thuốc còn ${expiredQty} đơn vị lô hết hạn. Vui lòng lập phiếu hủy trước khi ngừng kinh doanh`,
+        400,
+        'EXPIRED_STOCK_REMAINING',
+      )
+    }
+    await stockWriteOffService.writeOffExpiredBatchesForMedicine(
+      medicineId,
+      employeeId,
+      `Hủy lô hết hạn trước khi ngừng kinh doanh: ${med.MedicineName}`,
     )
   }
 
   await query(
     'UPDATE dbo.Medicine SET IsActive = 0, UpdatedAt = SYSUTCDATETIME() WHERE MedicineId = @id',
-    { id: medicineId }
+    { id: medicineId },
   )
+
+  alertService.checkAndCreateExpiryAlerts(medicineId).catch(() => {})
+  alertService.checkAndCreateLowStockAlert(medicineId).catch(() => {})
 }
 
 export async function updateBatch(medicineId, batchId, data) {

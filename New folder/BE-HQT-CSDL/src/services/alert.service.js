@@ -47,19 +47,14 @@ function fmtDate(d) {
   return String(d).split('T')[0]
 }
 
-// ============================================================
-// ALERTS - API
-// ============================================================
-export async function getAlerts(filters = {}, requestUser) {
+function buildAlertWhere(filters = {}, requestUser) {
   const conditions = []
   const params = {}
 
-  // STAFF chi xem PENDING
   let status = filters.status
   if (requestUser?.roleId === 'STAFF') {
     status = 'PENDING'
   } else if (!status) {
-    // ADMIN: default PENDING neu khong truyen
     status = 'PENDING'
   }
 
@@ -76,30 +71,188 @@ export async function getAlerts(filters = {}, requestUser) {
     params.medicineId = filters.medicineId
   }
 
-  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''
-  const sql = `
-    SELECT a.AlertId, a.AlertType, a.Status, a.StockSnapshot, a.MinStock, a.Note,
-           a.MedicineId, a.CreatedAt, a.ResolvedAt, a.ResolvedBy, a.CreatedBy,
-           a.ResolutionType, a.ResolutionNote,
-           m.MedicineName,
-           CASE
-             WHEN a.AlertType = 'EXPIRED' THEN 'CRITICAL'
-             WHEN a.AlertType = 'LOW_STOCK' AND a.StockSnapshot = 0 THEN 'CRITICAL'
-             ELSE 'WARNING'
-           END AS Severity
-    FROM dbo.InventoryAlert a
-    JOIN dbo.Medicine m ON m.MedicineId = a.MedicineId
-    ${where}
-    ORDER BY
-      CASE
-        WHEN a.AlertType = 'EXPIRED' THEN 1
-        WHEN a.AlertType = 'LOW_STOCK' AND a.StockSnapshot = 0 THEN 1
-        ELSE 2
-      END,
-      a.CreatedAt DESC
-  `
-  const rows = await query(sql, params)
-  return rows.map(mapAlert)
+  return {
+    where: conditions.length ? 'WHERE ' + conditions.join(' AND ') : '',
+    params,
+  }
+}
+
+const ALERT_SELECT = `
+  SELECT a.AlertId, a.AlertType, a.Status, a.StockSnapshot, a.MinStock, a.Note,
+         a.MedicineId, a.CreatedAt, a.ResolvedAt, a.ResolvedBy, a.CreatedBy,
+         a.ResolutionType, a.ResolutionNote,
+         m.MedicineName,
+         CASE
+           WHEN a.AlertType = 'EXPIRED' THEN 'CRITICAL'
+           WHEN a.AlertType = 'LOW_STOCK' AND a.StockSnapshot = 0 THEN 'CRITICAL'
+           ELSE 'WARNING'
+         END AS Severity
+  FROM dbo.InventoryAlert a
+  JOIN dbo.Medicine m ON m.MedicineId = a.MedicineId
+`
+
+const ALERT_ORDER = `
+  ORDER BY
+    CASE
+      WHEN a.AlertType = 'EXPIRED' THEN 1
+      WHEN a.AlertType = 'LOW_STOCK' AND a.StockSnapshot = 0 THEN 1
+      ELSE 2
+    END,
+    a.CreatedAt DESC
+`
+
+function currentStockSql(alias = 'm') {
+  return `ISNULL((
+    SELECT SUM(b.CurrentQty)
+    FROM dbo.MedicineBatch b
+    WHERE b.MedicineId = ${alias}.MedicineId
+      AND b.ExpiryDate >= CAST(GETDATE() AS DATE)
+  ), 0)`
+}
+
+export async function getAlertSummary(filters = {}, requestUser) {
+  const { where, params } = buildAlertWhere(filters, requestUser)
+  const row = await queryOne(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(CASE WHEN a.AlertType = 'LOW_STOCK' THEN 1 ELSE 0 END) AS lowStock,
+       SUM(CASE WHEN a.AlertType = 'NEAR_EXPIRY' THEN 1 ELSE 0 END) AS nearExpiry,
+       SUM(CASE WHEN a.AlertType = 'EXPIRED' THEN 1 ELSE 0 END) AS expired
+     FROM dbo.InventoryAlert a
+     JOIN dbo.Medicine m ON m.MedicineId = a.MedicineId
+     ${where}`,
+    params,
+  )
+
+  return {
+    total: Number(row?.total || 0),
+    lowStock: Number(row?.lowStock || 0),
+    nearExpiry: Number(row?.nearExpiry || 0),
+    expired: Number(row?.expired || 0),
+  }
+}
+
+// dong bo canh bao PENDING voi ton kho / han dung thuc te
+export async function reconcilePendingAlerts() {
+  const stockExpr = currentStockSql('m')
+
+  await query(
+    `UPDATE a
+     SET Status = 'RESOLVED',
+         ResolvedAt = SYSUTCDATETIME(),
+         ResolutionType = 'ADJUSTMENT',
+         ResolutionNote = N'Tự động đóng: tồn kho đã vượt ngưỡng'
+     FROM dbo.InventoryAlert a
+     INNER JOIN dbo.Medicine m ON m.MedicineId = a.MedicineId
+     WHERE a.Status = 'PENDING'
+       AND a.AlertType = 'LOW_STOCK'
+       AND ${stockExpr} > m.MinStock`,
+  )
+
+  await query(
+    `UPDATE a
+     SET Status = 'RESOLVED',
+         ResolvedAt = SYSUTCDATETIME(),
+         ResolutionType = 'ADJUSTMENT',
+         ResolutionNote = N'Tự động đóng: không còn lô phù hợp'
+     FROM dbo.InventoryAlert a
+     WHERE a.Status = 'PENDING'
+       AND a.AlertType = 'EXPIRED'
+       AND NOT EXISTS (
+         SELECT 1
+         FROM dbo.MedicineBatch b
+         WHERE b.MedicineId = a.MedicineId
+           AND b.CurrentQty > 0
+           AND b.ExpiryDate < CAST(GETDATE() AS DATE)
+       )`,
+  )
+
+  await query(
+    `UPDATE a
+     SET Status = 'RESOLVED',
+         ResolvedAt = SYSUTCDATETIME(),
+         ResolutionType = 'ADJUSTMENT',
+         ResolutionNote = N'Tự động đóng: không còn lô phù hợp'
+     FROM dbo.InventoryAlert a
+     WHERE a.Status = 'PENDING'
+       AND a.AlertType = 'NEAR_EXPIRY'
+       AND NOT EXISTS (
+         SELECT 1
+         FROM dbo.MedicineBatch b
+         WHERE b.MedicineId = a.MedicineId
+           AND b.CurrentQty > 0
+           AND b.ExpiryDate >= CAST(GETDATE() AS DATE)
+           AND b.ExpiryDate <= DATEADD(DAY, 30, CAST(GETDATE() AS DATE))
+       )`,
+  )
+
+  await query(
+    `INSERT INTO dbo.InventoryAlert
+       (AlertId, MedicineId, AlertType, StockSnapshot, MinStock, Note, Status)
+     SELECT
+       NEWID(),
+       m.MedicineId,
+       'LOW_STOCK',
+       ${stockExpr},
+       m.MinStock,
+       CONCAT(
+         N'Tồn kho ',
+         m.MedicineId,
+         N' - ',
+         m.MedicineName,
+         N' chỉ còn ',
+         CAST(${stockExpr} AS NVARCHAR(20)),
+         N' đơn vị (ngưỡng tối thiểu: ',
+         CAST(m.MinStock AS NVARCHAR(20)),
+         N')'
+       ),
+       'PENDING'
+     FROM dbo.Medicine m
+     WHERE m.IsActive = 1
+       AND ${stockExpr} <= m.MinStock
+       AND NOT EXISTS (
+         SELECT 1
+         FROM dbo.InventoryAlert a
+         WHERE a.MedicineId = m.MedicineId
+           AND a.AlertType = 'LOW_STOCK'
+           AND a.Status = 'PENDING'
+       )`,
+  )
+
+  await checkAndCreateExpiryAlerts()
+}
+
+// ============================================================
+// ALERTS - API
+// ============================================================
+export async function getAlerts(filters = {}, requestUser, pagination = null) {
+  const { where, params } = buildAlertWhere(filters, requestUser)
+
+  const countRow = await queryOne(
+    `SELECT COUNT(*) AS total
+     FROM dbo.InventoryAlert a
+     JOIN dbo.Medicine m ON m.MedicineId = a.MedicineId
+     ${where}`,
+    params,
+  )
+
+  let sql = `${ALERT_SELECT} ${where} ${ALERT_ORDER}`
+  const queryParams = { ...params }
+
+  if (pagination) {
+    sql += ' OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY'
+    queryParams.offset = pagination.offset
+    queryParams.limit = pagination.limit
+  }
+
+  const rows = await query(sql, queryParams)
+  const summary = await getAlertSummary(filters, requestUser)
+
+  return {
+    items: rows.map(mapAlert),
+    total: Number(countRow?.total || 0),
+    summary,
+  }
 }
 
 export async function getAlertById(alertId) {

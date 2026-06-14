@@ -39,6 +39,13 @@ export default function AdminHome() {
     'Tổng quan',
     'Theo dõi doanh thu, tồn kho, đơn hàng và hiệu suất hoạt động',
   )
+
+  const currentUser = useMemo(
+    () => JSON.parse(localStorage.getItem('user') || 'null'),
+    [],
+  )
+  const adminName =
+    currentUser?.name || currentUser?.fullName || currentUser?.username || 'Quản trị viên'
   const [monthSummary, setMonthSummary] = useState(null)
   const [todaySummary, setTodaySummary] = useState(null)
   const [dashboardStats, setDashboardStats] = useState({
@@ -119,7 +126,7 @@ export default function AdminHome() {
                 Hệ thống quản lý nhà thuốc
               </p>
               <h1 className="mt-3 text-4xl font-bold leading-tight">
-                Xin chào, Quản trị viên
+                Xin chào, {adminName}
               </h1>
               <p className="mt-4 max-w-xl text-emerald-50 leading-relaxed">
                 Theo dõi doanh thu, tồn kho, đơn hàng và hiệu suất hoạt động trong

@@ -262,3 +262,32 @@ function mergeLines(lines) {
   }
   return [...map.values()]
 }
+
+export async function writeOffExpiredBatchesForMedicine(
+  medicineId,
+  employeeId,
+  reason = 'Hủy lô hết hạn khi ngừng kinh doanh',
+) {
+  const batches = await query(
+    `SELECT BatchId, CurrentQty
+     FROM dbo.MedicineBatch
+     WHERE MedicineId = @id
+       AND CurrentQty > 0
+       AND ExpiryDate < CAST(GETDATE() AS DATE)`,
+    { id: medicineId },
+  )
+
+  if (!batches.length) return null
+
+  return create(
+    {
+      reason,
+      lines: batches.map((batch) => ({
+        batchId: batch.BatchId,
+        quantity: batch.CurrentQty,
+        reason: 'Hết hạn',
+      })),
+    },
+    employeeId,
+  )
+}

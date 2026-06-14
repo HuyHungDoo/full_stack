@@ -25,6 +25,10 @@ export default function Header() {
   const [openLowStockPopup, setOpenLowStockPopup] = useState(false)
   const [openUserMenu, setOpenUserMenu] = useState(false)
   const [alerts, setAlerts] = useState([])
+  const [alertMeta, setAlertMeta] = useState({
+    total: 0,
+    summary: { total: 0, lowStock: 0, nearExpiry: 0, expired: 0 },
+  })
   const notificationRef = useRef(null)
   const userMenuRef = useRef(null)
   const { pageHeader } = usePageHeader()
@@ -47,31 +51,76 @@ export default function Header() {
   useEffect(() => {
     if (!user) {
       setAlerts([])
+      setAlertMeta({ total: 0, summary: { total: 0, lowStock: 0, nearExpiry: 0, expired: 0 } })
       return
     }
-    getAlerts({ status: 'PENDING', limit: 20 })
-      .then(setAlerts)
-      .catch(() => setAlerts([]))
+    getAlerts({ status: 'PENDING', limit: 8, page: 1, refresh: true })
+      .then(({ items, meta }) => {
+        setAlerts(items)
+        setAlertMeta({
+          total: meta.total || 0,
+          summary: meta.summary || { total: meta.total || 0, lowStock: 0, nearExpiry: 0, expired: 0 },
+        })
+      })
+      .catch(() => {
+        setAlerts([])
+        setAlertMeta({ total: 0, summary: { total: 0, lowStock: 0, nearExpiry: 0, expired: 0 } })
+      })
   }, [user])
 
   const notificationItems = useMemo(
     () =>
       alerts.map((alert) => ({
         id: alert.alertId,
+        medicineId: alert.medicineId,
+        alertType: alert.alertType,
         title: alert.medicineName || alert.medicineId,
         message:
           alert.alertType === 'EXPIRED'
             ? 'Lô thuốc đã hết hạn'
-            : alert.alertType === 'LOW_STOCK'
-              ? `Tồn kho: ${alert.stockSnapshot ?? 0} (tối thiểu ${alert.minStock ?? 0})`
-              : alert.note || 'Cảnh báo tồn kho / hạn dùng',
+            : alert.alertType === 'NEAR_EXPIRY'
+              ? 'Lô thuốc sắp hết hạn'
+              : alert.alertType === 'LOW_STOCK'
+                ? `Tồn kho: ${alert.stockSnapshot ?? 0} (tối thiểu ${alert.minStock ?? 0})`
+                : alert.note || 'Cảnh báo tồn kho / hạn dùng',
         severity: alert.severity,
       })),
     [alerts],
   )
 
-  const notificationCount = notificationItems.length
-  const notificationPreview = useMemo(() => notificationItems.slice(0, 8), [notificationItems])
+  const getBatchFilterForAlert = (alertType) => {
+    if (alertType === 'EXPIRED') return 'Hết hạn'
+    if (alertType === 'NEAR_EXPIRY') return 'Sắp hết hạn'
+    if (alertType === 'LOW_STOCK') return 'Hết hàng'
+    return ''
+  }
+
+  const openInventoryAlert = (item) => {
+    if (!item?.medicineId) {
+      setOpenLowStockPopup(false)
+      navigate('/inventory')
+      return
+    }
+
+    const params = new URLSearchParams({ medicineId: item.medicineId })
+    const batchFilter = getBatchFilterForAlert(item.alertType)
+    if (batchFilter) params.set('batchFilter', batchFilter)
+
+    setOpenLowStockPopup(false)
+    navigate(`/inventory?${params.toString()}`)
+  }
+
+  const notificationCount = alertMeta.total
+  const notificationPreview = notificationItems
+  const alertSummaryText = useMemo(() => {
+    const summary = alertMeta.summary || {}
+    const parts = []
+    if (summary.lowStock > 0) parts.push(`${summary.lowStock} tồn thấp`)
+    const expiryCount = Number(summary.nearExpiry || 0) + Number(summary.expired || 0)
+    if (expiryCount > 0) parts.push(`${expiryCount} hạn dùng`)
+    if (parts.length === 0) return `${notificationCount} cảnh báo đang chờ`
+    return `${notificationCount} cảnh báo (${parts.join(' · ')})`
+  }, [alertMeta.summary, notificationCount])
   const displayName = user?.name || user?.fullName || user?.username || 'Người dùng'
 
   useEffect(() => {
@@ -143,15 +192,20 @@ export default function Header() {
                 <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl">
                   <div className="border-b border-slate-100 px-4 py-3">
                     <p className="text-sm font-bold text-slate-800">Cảnh báo hệ thống</p>
-                    <p className="text-xs text-slate-500">{notificationCount} thông báo đang chờ</p>
+                    <p className="text-xs text-slate-500">{alertSummaryText}</p>
                   </div>
                   <div className="max-h-80 overflow-y-auto">
                     {notificationPreview.length > 0 ? (
                       notificationPreview.map((item) => (
-                        <div key={item.id} className="border-b border-slate-50 px-4 py-3 last:border-b-0">
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => openInventoryAlert(item)}
+                          className="w-full border-b border-slate-50 px-4 py-3 text-left transition last:border-b-0 hover:bg-slate-50"
+                        >
                           <p className="text-sm font-semibold text-slate-800">{item.title}</p>
                           <p className="mt-1 text-xs text-slate-500">{item.message}</p>
-                        </div>
+                        </button>
                       ))
                     ) : (
                       <p className="px-4 py-6 text-center text-sm text-slate-400">Không có cảnh báo mới</p>

@@ -53,8 +53,18 @@ export function getExpiryWarning(item, days = EXPIRY_WARNING_DAYS) {
 
 export function getDisplayStatus(item) {
   if (item.status === 'INACTIVE') return { label: 'Ngừng bán', tone: 'disabled' }
-  if (item.stock > item.minStock) return { label: 'Bình thường', tone: 'safe' }
-  if (item.stock === 0) return { label: 'Hết hàng', tone: 'danger' }
+
+  const sellableStock = Number(item.stock || 0)
+  const hasExpiredQty = (item.batches || []).some((batch) => {
+    const warning = getExpiryWarning({ batches: [batch] })
+    return warning.isExpired && Number(batch.qty || 0) > 0
+  })
+
+  if (sellableStock <= 0 && hasExpiredQty) {
+    return { label: 'Hết hạn', tone: 'danger' }
+  }
+  if (sellableStock > item.minStock) return { label: 'Bình thường', tone: 'safe' }
+  if (sellableStock === 0) return { label: 'Hết hàng', tone: 'danger' }
   return { label: 'Sắp hết', tone: 'danger' }
 }
 

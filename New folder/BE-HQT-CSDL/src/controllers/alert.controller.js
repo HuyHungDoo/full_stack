@@ -2,6 +2,7 @@ import { z } from 'zod'
 import * as alertService from '../services/alert.service.js'
 import AppError from '../utils/AppError.js'
 import catchAsync from '../utils/catchAsync.js'
+import { buildMeta, parsePagination } from '../utils/pagination.js'
 
 const resolveSchema = z.object({
   note: z.string().max(500).optional().nullable(),
@@ -19,9 +20,11 @@ function validate(schema, body) {
 // ALERTS
 // ============================================================
 export const getAlerts = catchAsync(async (req, res) => {
-  // refresh = true -> tu dong quet expiry truoc khi tra list
-  if (req.query.refresh === 'true' && req.user?.roleId === 'ADMIN') {
-    await alertService.checkAndCreateExpiryAlerts()
+  const isAdmin = req.user?.roleId === 'ADMIN'
+  const shouldRefresh = req.query.refresh !== 'false'
+
+  if (isAdmin && shouldRefresh) {
+    await alertService.reconcilePendingAlerts()
   }
 
   const filters = {
@@ -29,8 +32,17 @@ export const getAlerts = catchAsync(async (req, res) => {
     alertType: req.query.alertType,
     medicineId: req.query.medicineId,
   }
-  const data = await alertService.getAlerts(filters, req.user)
-  res.json({ success: true, data })
+  const pagination = parsePagination(req.query, 8)
+  const result = await alertService.getAlerts(filters, req.user, pagination)
+
+  res.json({
+    success: true,
+    data: result.items,
+    meta: {
+      ...buildMeta(result.total, pagination.page, pagination.limit),
+      summary: result.summary,
+    },
+  })
 })
 
 export const getAlertById = catchAsync(async (req, res) => {

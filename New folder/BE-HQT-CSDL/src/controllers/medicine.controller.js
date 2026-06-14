@@ -117,12 +117,12 @@ export const create = catchAsync(async (req, res) => {
 
 export const update = catchAsync(async (req, res) => {
   const data = validate(updateSchema, req.body)
-  const medicine = await medicineService.update(req.params.id, data)
+  const medicine = await medicineService.update(req.params.id, data, req.user?.employeeId)
   res.json({ success: true, data: medicine })
 })
 
 export const deactivate = catchAsync(async (req, res) => {
-  await medicineService.deactivate(req.params.id)
+  await medicineService.deactivate(req.params.id, req.user?.employeeId)
   res.json({ success: true, message: 'Đã ngừng kinh doanh thuốc' })
 })
 

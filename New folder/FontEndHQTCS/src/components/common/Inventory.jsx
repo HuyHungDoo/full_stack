@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   FaChevronDown,
   FaChevronRight,
@@ -137,6 +138,8 @@ const emptyImportForm = {
 export default function Inventory() {
   useSetPageHeader('Kiểm tra tồn kho', 'Tra cứu tồn kho thuốc realtime')
 
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const user = useMemo(() => JSON.parse(localStorage.getItem('user') || 'null'), [])
   const isAdmin = user?.role === 'admin'
 
@@ -167,6 +170,8 @@ export default function Inventory() {
   })
   const [medicineDetails, setMedicineDetails] = useState({})
   const [importSearchResults, setImportSearchResults] = useState([])
+  const [focusRequest, setFocusRequest] = useState(null)
+  const [highlightedMedicineId, setHighlightedMedicineId] = useState(null)
 
   const mergeMedicine = useCallback(
     (medicine) => {
@@ -286,6 +291,76 @@ export default function Inventory() {
   useEffect(() => {
     loadStats()
   }, [])
+
+  useEffect(() => {
+    const medicineId = searchParams.get('medicineId')?.trim()
+    if (!medicineId) return
+
+    const batchFilter = searchParams.get('batchFilter') || 'Tất cả'
+    setFocusRequest({ medicineId, batchFilter })
+    setSearch(medicineId)
+    setPage(1)
+    navigate('/inventory', { replace: true })
+  }, [searchParams, navigate, setPage])
+
+  useEffect(() => {
+    if (!focusRequest || listLoading) return
+
+    const { medicineId, batchFilter } = focusRequest
+    if (search.trim() !== medicineId) return
+
+    let cancelled = false
+
+    const focusMedicine = async () => {
+      let medicine = medicines.find((item) => item.id === medicineId)
+      if (!medicine) {
+        const detail = await loadMedicineDetail(medicineId)
+        if (cancelled) return
+        if (!detail) {
+          setFocusRequest(null)
+          return
+        }
+        medicine = detail
+      }
+
+      setExpandedMedicineIds((prev) => ({ ...prev, [medicineId]: true }))
+      await cacheMedicineDetail(medicineId)
+      if (cancelled) return
+
+      setHighlightedMedicineId(medicineId)
+      if (batchFilter && batchFilter !== 'Tất cả') {
+        setBatchDetailModal({
+          isOpen: true,
+          medicineId,
+          filter: batchFilter,
+        })
+      }
+
+      window.setTimeout(() => {
+        document
+          .getElementById(`medicine-row-${medicineId}`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 120)
+
+      window.setTimeout(() => {
+        setHighlightedMedicineId((current) => (current === medicineId ? null : current))
+      }, 4000)
+
+      setFocusRequest(null)
+    }
+
+    focusMedicine()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    focusRequest,
+    listLoading,
+    medicines,
+    search,
+    loadMedicineDetail,
+    cacheMedicineDetail,
+  ])
 
   const inventorySummary = useMemo(() => {
     if (inventoryStats) {
@@ -695,7 +770,25 @@ export default function Inventory() {
   }
 
   const handleDeleteMedicine = async (medicine) => {
-    if (!window.confirm(`Chuyển thuốc "${medicine.name}" sang trạng thái ngừng kinh doanh?`)) return
+    const displayItem = mergeMedicine(medicine)
+    const sellableStock = Number(displayItem?.stock || 0)
+    const expiredQty = (displayItem?.batches || []).reduce((sum, batch) => {
+      const warning = getExpiryWarning({ batches: [batch] })
+      return warning.isExpired ? sum + Number(batch.qty || 0) : sum
+    }, 0)
+
+    let confirmMessage = `Chuyển thuốc "${medicine.name}" sang trạng thái ngừng kinh doanh?`
+    if (sellableStock > 0) {
+      showError(`Không thể ngừng kinh doanh khi còn ${sellableStock} đơn vị tồn kho còn hạn.`)
+      return
+    }
+    if (expiredQty > 0) {
+      confirmMessage =
+        `Thuốc "${medicine.name}" còn ${expiredQty} đơn vị lô hết hạn.\n` +
+        'Hệ thống sẽ tự lập phiếu hủy các lô hết hạn rồi chuyển sang ngừng kinh doanh. Tiếp tục?'
+    }
+
+    if (!window.confirm(confirmMessage)) return
     try {
       await deleteMedicine(medicine.id)
       await loadStats()
@@ -917,7 +1010,13 @@ export default function Inventory() {
                       : []
 
                     return [
-                      <tr key={item.id} className="border-t border-slate-100 transition hover:bg-slate-50/80">
+                      <tr
+                        key={item.id}
+                        id={`medicine-row-${item.id}`}
+                        className={`border-t border-slate-100 transition hover:bg-slate-50/80 ${
+                          highlightedMedicineId === item.id ? 'bg-amber-50 ring-2 ring-inset ring-amber-200' : ''
+                        }`}
+                      >
                         <td className="p-4">
                           <div className="flex items-center gap-3">
                             <button

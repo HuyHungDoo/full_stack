@@ -1,8 +1,27 @@
 import api from './client'
 
+function parseAlertListResponse(res) {
+  const meta = res.data?.meta || {}
+  return {
+    items: res.data?.data || [],
+    meta: {
+      total: meta.total ?? 0,
+      page: meta.page ?? 1,
+      limit: meta.limit ?? 8,
+      totalPages: meta.totalPages ?? 1,
+      summary: meta.summary || {
+        total: meta.total ?? 0,
+        lowStock: 0,
+        nearExpiry: 0,
+        expired: 0,
+      },
+    },
+  }
+}
+
 export async function getAlerts(params = {}) {
   const res = await api.get('/alerts', { params })
-  return res.data?.data || []
+  return parseAlertListResponse(res)
 }
 
 export async function resolveAlert(alertId, note) {
