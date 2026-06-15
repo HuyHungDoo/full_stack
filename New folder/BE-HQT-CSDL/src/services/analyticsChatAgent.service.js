@@ -61,7 +61,7 @@ const analyticsTools = [
         properties: {
           ...rangeProperties,
           groupBy: { type: 'string', enum: ['day', 'week', 'month'] },
-          compareWith: { type: 'string', enum: ['prev_period', 'prev_year'] },
+          compareWith: { type: 'string', enum: ['prev_period', 'prev_year', 'prev_month', 'prev_week', 'prev_quarter'] },
         },
         required: ['startDate', 'endDate'],
         additionalProperties: false,
@@ -479,6 +479,21 @@ function parseDateRange(message, refDate, earliestDate = null) {
     return result(start, ref, `${months} tháng qua`)
   }
 
+  // 7b. "theo tháng gần đây" / "tháng gần đây" (không ghi số)
+  if (
+    /\b(theo\s+)?thang\s*(gan day|gan nhat|vua qua|moi day)\b/.test(n) ||
+    (/\b(gan day|gan nhat|vua qua|moi day)\b/.test(n) && /\bthang\b/.test(n))
+  ) {
+    const months = 6
+    const start = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth() - (months - 1), 1))
+    return result(start, ref, `${months} tháng gần đây`)
+  }
+
+  // 7c. "gần đây" chung (không chỉ định đơn vị)
+  if (/\b(gan day|gan nhat|vua qua|moi day)\b/.test(n)) {
+    return result(addDays(ref, -89), ref, '90 ngày gần nhất')
+  }
+
   // 8. "hôm nay" / "today"
   if (/\b(hom nay|today|ngay hom nay)\b/.test(n)) {
     return result(ref, ref, 'hôm nay')
@@ -549,9 +564,22 @@ function parseDateRange(message, refDate, earliestDate = null) {
     return result(startOfYear(prev), endOfYear(prev), 'năm trước')
   }
 
-  // 18a. Khoảng "từ tháng X đến tháng Y" (cùng năm hoặc khác năm)
+  // 18a. Khoảng "từ tháng 6-2023 đến tháng 9-2024" / "tháng 6/2023 → tháng 9/2024"
+  const monthRangeSep = String.raw`(?:den|toi|->|\u2192|-)`
+  const monthYearRange = n.match(
+    new RegExp(String.raw`(?:tu\s+)?thang\s*(\d{1,2})\s*[-\/]\s*(\d{4})\s*${monthRangeSep}\s*thang\s*(\d{1,2})\s*[-\/]\s*(\d{4})`),
+  )
+  if (monthYearRange) {
+    const y1 = +monthYearRange[2]
+    const y2 = +monthYearRange[4]
+    const dStart = new Date(Date.UTC(y1, +monthYearRange[1] - 1, 1))
+    const dEnd = new Date(Date.UTC(y2, +monthYearRange[3] - 1, 1))
+    return result(startOfMonth(dStart), endOfMonth(dEnd), `tháng ${monthYearRange[1]}/${y1} → tháng ${monthYearRange[3]}/${y2}`)
+  }
+
+  // 18b. Khoảng "từ tháng X đến tháng Y" (cùng năm hoặc khác năm)
   const monthRange = n.match(
-    /(?:tu\s+)?thang\s*(\d{1,2})(?:\s*(?:nam|\/)\s*(\d{4}))?\s*(?:den|toi|-)\s*thang\s*(\d{1,2})(?:\s*(?:nam|\/)\s*(\d{4}))?/
+    new RegExp(String.raw`(?:tu\s+)?thang\s*(\d{1,2})(?:\s*(?:nam|\/|-)\s*(\d{4}))?\s*${monthRangeSep}\s*thang\s*(\d{1,2})(?:\s*(?:nam|\/|-)\s*(\d{4}))?`),
   )
   if (monthRange) {
     const y1 = +(monthRange[2] || ref.getUTCFullYear())
@@ -561,9 +589,9 @@ function parseDateRange(message, refDate, earliestDate = null) {
     return result(startOfMonth(dStart), endOfMonth(dEnd), `tháng ${monthRange[1]}/${y1} → tháng ${monthRange[3]}/${y2}`)
   }
 
-  // 18. Tháng cụ thể có năm: "tháng 3 năm 2024", "tháng 3/2024", "03/2024"
-  const monthYear = n.match(
-    /thang\s*(\d{1,2})(?:\s*(?:nam|\/)\s*(\d{4}))?|(\d{1,2})\/(\d{4})/
+  // 18c. Tháng cụ thể có năm: "tháng 3 năm 2024", "tháng 6-2023", "03/2024"
+  const monthYear = !new RegExp(String.raw`${monthRangeSep}\s*thang`).test(n) && n.match(
+    /thang\s*(\d{1,2})(?:\s*(?:nam|\/|-)\s*(\d{4}))?|(\d{1,2})\/(\d{4})/,
   )
   if (monthYear) {
     const month = +(monthYear[1] || monthYear[3]) - 1
@@ -633,16 +661,26 @@ function dataLagNote(latestDate, refDate) {
   return ''
 }
 
-function summarizeTopProducts(rows, range, latestDate) {
+function summarizeTopProducts(rows, range, latestDate, { sortBy = 'revenue', limit = 5 } = {}) {
   const lag = dataLagNote(latestDate, range.endDate)
+  const rangeLabel = range.label || `${range.startDate} → ${range.endDate}`
+
   if (!rows?.length) {
-    return `Chưa có dữ liệu sản phẩm bán chạy trong khoảng ${range.startDate} đến ${range.endDate}.${lag}`
+    return `Chưa có dữ liệu sản phẩm trong khoảng ${range.startDate} đến ${range.endDate}.${lag}`
   }
-  const lines = rows.slice(0, 5).map((item, i) => {
+
+  const header = sortBy === 'quantity'
+    ? `Top ${limit} thuốc bán chạy (${rangeLabel}):`
+    : sortBy === 'profit'
+      ? `Top ${limit} sản phẩm lợi nhuận cao nhất (${rangeLabel}):`
+      : `Top ${limit} sản phẩm doanh thu cao nhất (${rangeLabel}):`
+
+  const lines = rows.slice(0, limit).map((item, i) => {
     const name = item.productName || item.medicineName || item.productKey
     return `${i + 1}. ${name}: ${quantity(item.quantitySold || item.quantity)} sp, doanh thu ${money(item.revenue)}, lợi nhuận ${money(item.profit)}`
   })
-  return `Top thuốc bán chạy (${range.label || `${range.startDate} → ${range.endDate}`}):${lag}\n${lines.join('\n')}`
+
+  return `${header}${lag}\n${lines.join('\n')}`
 }
 
 function summarizeLowStock(rows, latestDate) {
@@ -667,24 +705,216 @@ function summarizeMatrixProducts(rows, abcClass, xyzClass, range, latestDate) {
   return `Sản phẩm nhóm ${abcClass}${xyzClass} (${range.label || `${range.startDate} → ${range.endDate}`}):${lag}\n${lines.join('\n')}`
 }
 
+function recentMonthsRange(latestDate, months = 6) {
+  const ref = new Date(`${latestDate}T00:00:00.000Z`)
+  const start = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth() - (months - 1), 1))
+  return {
+    startDate: start.toISOString().slice(0, 10),
+    endDate: latestDate,
+    label: `${months} tháng gần đây`,
+  }
+}
+
+function lastCompleteYearRange(latestDate) {
+  const ref = new Date(`${latestDate}T00:00:00.000Z`)
+  const year = ref.getUTCFullYear() - 1
+  return {
+    startDate: `${year}-01-01`,
+    endDate: `${year}-12-31`,
+    label: `năm ${year}`,
+  }
+}
+
+function resolveCategoryRevenueRange(range, normalized, latestDate) {
+  if (range.label !== 'toàn bộ dữ liệu') return range
+  if (/tang truong|dang tang|tot nhat/.test(normalized)) {
+    return lastCompleteYearRange(latestDate)
+  }
+  if (/so sanh/.test(normalized)) {
+    return recentMonthsRange(latestDate, 6)
+  }
+  return range
+}
+
+function formatCategoryGrowth(row) {
+  if (row.revenueChangePercent != null) {
+    const sign = row.revenueChangePercent > 0 ? '+' : ''
+    return `${sign}${row.revenueChangePercent}%`
+  }
+  if (row.revenue > 0 && !row.previousRevenue) return 'mới phát sinh'
+  return 'n/a'
+}
+
+function summarizeCategoryRevenue(data, range, { growthFocus = false } = {}) {
+  let rows = [...(data || [])]
+  if (growthFocus) {
+    rows = rows
+      .filter((row) => row.revenueChangePercent != null && row.revenueChangePercent > 0)
+      .sort((a, b) => b.revenueChangePercent - a.revenueChangePercent)
+  }
+
+  const rangeLabel = formatSalesRangeLabel(range)
+  const header = growthFocus
+    ? `Nhóm sản phẩm tăng trưởng tốt (${rangeLabel} so với kỳ trước):`
+    : /so sanh/.test(normalizeText(String(range.label || ''))) || rangeLabel.includes('→')
+      ? `So sánh doanh thu theo nhóm thuốc (${rangeLabel}):`
+      : `Doanh thu theo danh mục (${rangeLabel}):`
+
+  if (growthFocus && !rows.length) {
+    return `Không có nhóm sản phẩm tăng trưởng dương trong ${rangeLabel} so với kỳ trước.`
+  }
+
+  if (!rows.length) {
+    return `Chưa có dữ liệu doanh thu theo danh mục (${rangeLabel}).`
+  }
+
+  const lines = rows.slice(0, 8).map((row, index) => {
+    const growthText = formatCategoryGrowth(row)
+    if (growthFocus) {
+      return `${index + 1}. ${row.categoryName}: ${growthText} — doanh thu ${money(row.revenue)}`
+    }
+    return `${index + 1}. ${row.categoryName}: ${money(row.revenue)} (${growthText})`
+  })
+
+  return `${header}\n${lines.join('\n')}`
+}
+
+function resolveTrendRange(range, normalized, latestDate) {
+  if (range.label !== 'toàn bộ dữ liệu') return range
+  if (/\bthang\b/.test(normalized) || /\b(aov|doanh thu|revenue)\b/.test(normalized)) {
+    return recentMonthsRange(latestDate, 6)
+  }
+  return {
+    startDate: addDays(latestDate, -89),
+    endDate: latestDate,
+    label: '90 ngày gần nhất',
+  }
+}
+
+function formatTrendPeriod(period) {
+  if (!period) return 'N/A'
+  const text = String(period)
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 7)
+  return text
+}
+
+function formatOverallTrend(rows, formatValue) {
+  if (!rows?.length || rows.length < 2) return 'Xu hướng: Chưa đủ dữ liệu'
+
+  const first = rows[0]
+  const last = rows[rows.length - 1]
+  if (last.value === first.value) {
+    return `Xu hướng: Ổn định (${formatValue(first.value)} → ${formatValue(last.value)})`
+  }
+
+  const direction = last.value > first.value ? 'Tăng' : 'Giảm'
+  if (first.value > 0) {
+    const deltaPercent = Number(((last.value - first.value) / first.value * 100).toFixed(2))
+    const sign = deltaPercent > 0 ? '+' : ''
+    return `Xu hướng: ${direction} (${sign}${deltaPercent}%, ${formatValue(first.value)} → ${formatValue(last.value)})`
+  }
+
+  return `Xu hướng: ${direction} (${formatValue(first.value)} → ${formatValue(last.value)})`
+}
+
+function summarizeSalesTrend(rows, range, metric, latestDate) {
+  const lag = dataLagNote(latestDate, range.endDate)
+  const metricLabel = metric === 'aov' ? 'AOV' : metric === 'orders' ? 'Số đơn' : 'Doanh thu'
+  const formatValue = (value) => (metric === 'orders' ? quantity(value) : money(value))
+  const rangeLabel = formatSalesRangeLabel(range)
+
+  if (!rows?.length) {
+    return `Chưa có dữ liệu xu hướng ${metricLabel} (${rangeLabel}).${lag}`
+  }
+
+  const displayLimit = rows.length <= 24 ? rows.length : 12
+  const points = rows.length <= 24 ? rows : rows.slice(-displayLimit)
+  const trendLine = formatOverallTrend(rows, formatValue)
+  const lines = points.map((row) => `• ${formatTrendPeriod(row.period)}: ${formatValue(row.value)}`)
+
+  let changeLine = ''
+  if (rows.length >= 2) {
+    const previous = rows[rows.length - 2]
+    const latest = rows[rows.length - 1]
+    if (previous.value > 0) {
+      const deltaPercent = Number(((latest.value - previous.value) / previous.value * 100).toFixed(2))
+      const sign = deltaPercent > 0 ? '+' : ''
+      changeLine = `\n${metricLabel} kỳ gần nhất ${sign}${deltaPercent}% so với kỳ trước (${formatValue(previous.value)} → ${formatValue(latest.value)}).`
+    } else if (latest.value > 0) {
+      changeLine = `\n${metricLabel} kỳ gần nhất: mới phát sinh (kỳ trước: ${formatValue(0)}).`
+    }
+  }
+
+  return `Xu hướng ${metricLabel} theo tháng (${rangeLabel}):${lag}\n${trendLine}\n${lines.join('\n')}${changeLine}`
+}
+
+function formatCompareDelta(metric, { inline = false } = {}) {
+  if (metric?.deltaPercent != null) {
+    const sign = metric.deltaPercent > 0 ? '+' : ''
+    const text = `${sign}${metric.deltaPercent}% so với kỳ trước`
+    return inline ? ` (${text.replace(' so với kỳ trước', ' so kỳ trước')})` : text
+  }
+
+  const current = Number(metric?.current ?? 0)
+  const previous = Number(metric?.previous ?? 0)
+  if (current > 0 && previous === 0) {
+    return inline ? ' (mới phát sinh, kỳ trước: 0 đ)' : 'mới phát sinh (kỳ trước: 0 đ)'
+  }
+  if (current === 0 && previous > 0) {
+    return inline ? ' (-100% so kỳ trước)' : '-100% so với kỳ trước'
+  }
+  if (current === 0 && previous === 0) {
+    return inline ? ' (không phát sinh)' : 'không phát sinh (kỳ trước: 0 đ)'
+  }
+  return inline ? '' : 'chưa đủ dữ liệu kỳ so sánh'
+}
+
+function formatSalesRangeLabel(range) {
+  if (range.label?.includes('→')) return range.label
+  if (range.startDate === range.endDate) return range.label || range.startDate
+  if (range.label && !/^\d{4}-\d{2}-\d{2}$/.test(range.label)) return range.label
+  return `${range.startDate} → ${range.endDate}`
+}
+
+function resolveCompareWith(range) {
+  const label = normalizeText(range.label || '')
+  if (/\b(thang nay|thang truoc|trong thang)\b/.test(label)) return 'prev_month'
+  if (/\b(tuan nay|tuan truoc|trong tuan)\b/.test(label)) return 'prev_week'
+  if (/\b(quy nay|quy truoc|trong quy)\b/.test(label)) return 'prev_quarter'
+  if (/\b(nam nay|nam truoc|trong nam)\b/.test(label)) return 'prev_year'
+  return 'prev_period'
+}
+
+function summarizeInventoryValue(data, breakdown) {
+  if (!data?.groups?.length) {
+    return 'Chưa có dữ liệu giá trị tồn kho.'
+  }
+
+  if (breakdown === 'none') {
+    return `Giá trị tồn kho: tổng ${money(data.totalValue)}, ${quantity(data.totalQty)} đơn vị.`
+  }
+
+  const breakdownLabel = breakdown === 'category' ? 'danh mục' : 'nhà cung cấp'
+  const lines = data.groups.slice(0, 10).map((group, index) =>
+    `${index + 1}. ${group.name}: ${money(group.inventoryValue)} (${group.sharePercent}%), ${quantity(group.currentQty)} đơn vị, ${quantity(group.productCount)} SP`,
+  )
+
+  return `Giá trị tồn kho theo ${breakdownLabel} (tổng ${money(data.totalValue)}, ${quantity(data.totalQty)} đơn vị):\n${lines.join('\n')}`
+}
+
 function summarizeSales(data, range, latestDate) {
   const lag = dataLagNote(latestDate, range.endDate)
   const revenue = data?.metrics?.revenue
   const orders = data?.metrics?.orders
   const profit = data?.metrics?.profit
   const aov = data?.metrics?.aov
-  const delta = revenue?.deltaPercent == null
-    ? 'chưa đủ dữ liệu kỳ so sánh'
-    : `${revenue.deltaPercent > 0 ? '+' : ''}${revenue.deltaPercent}% so với kỳ trước`
+  const delta = formatCompareDelta(revenue)
   const lines = [
-    `Doanh thu ${range.label || `${range.startDate} → ${range.endDate}`}: ${money(revenue?.current)}, ${delta}.${lag}`,
+    `Doanh thu ${formatSalesRangeLabel(range)}: ${money(revenue?.current)}, ${delta}.${lag}`,
     `Số đơn: ${quantity(orders?.current)}. Lợi nhuận gộp: ${money(profit?.current)}.`,
   ]
   if (aov?.current != null) {
-    const aovDelta = aov.deltaPercent != null
-      ? ` (${aov.deltaPercent > 0 ? '+' : ''}${aov.deltaPercent}% so kỳ trước)`
-      : ''
-    lines.push(`AOV: ${money(aov.current)}${aovDelta}.`)
+    lines.push(`AOV: ${money(aov.current)}${formatCompareDelta(aov, { inline: true })}.`)
   }
   return lines.join('\n')
 }
@@ -713,9 +943,13 @@ function classifyIntent(normalized) {
     !mentionsInventoryValue &&
     /sap het|het hang|can chu y|ton kho thap|low stock|thieu hang/.test(normalized)
 
+  const isCategoryGroupingQuery =
+    /danh muc|category|theo nhom|nhom thuoc|nhom san pham|nhom hang|theo danh muc/.test(normalized)
+
   const mentionsCategoryRevenue =
-    /danh muc|nhom (san pham|thuoc)|category/.test(normalized) &&
-    (mentionsRevenue || mentionsProfit || /tang truong|so sanh/.test(normalized))
+    (isCategoryGroupingQuery ||
+      (/\bnhom\b/.test(normalized) && !isProductContext)) &&
+    (mentionsRevenue || mentionsProfit || /tang truong|so sanh|tot nhat|cao nhat/.test(normalized))
 
   const mentionsStockLoss =
     /huy hang|hao hut|mat hang|xuat huy|stock loss|thua kien|bi huy|that thoat|tieu huy/.test(normalized)
@@ -729,23 +963,27 @@ function classifyIntent(normalized) {
     !/ban chay/.test(normalized)
 
   const mentionsTopCustomer =
-    /khach hang|customer/.test(normalized) &&
-    /top|nhieu nhat|cao nhat|hang dau/.test(normalized)
+    (/khach hang|customer|\bkh\b/.test(normalized)) &&
+    (/top|nhieu nhat|cao nhat|hang dau|mua nhieu/.test(normalized))
 
   const mentionsAov = /\baov\b|gia tri don trung binh|average order/.test(normalized)
 
-  const mentionsTrend =
-    (/xu huong|trend|theo (thang|tuan|ngay)|bieu do/.test(normalized)) &&
-    (mentionsRevenue || mentionsAov)
-
-  // AOV standalone không có từ trend → vẫn route sang getSalesSummary (có metrics.aov)
-  const isAovQuery = mentionsAov && !mentionsTrend && !isTopProductsQuery
-
   const isTopProductsQuery =
-    (mentionsTop && isProductContext) ||
+    !isCategoryGroupingQuery &&
+    ((mentionsTop && isProductContext) ||
     (mentionsTop && (mentionsRevenue || mentionsProfit)) ||
     (isProductContext && (mentionsRevenue || mentionsProfit) &&
-      !/tong|bao cao/.test(normalized))
+      !/tong|bao cao/.test(normalized)))
+
+  const mentionsTrend =
+    (/xu huong|trend|theo (thang|tuan|ngay)|bieu do|thay doi|bien dong|ra sao/.test(normalized)) &&
+    (mentionsRevenue || mentionsAov)
+
+  const isAovQuery = mentionsAov && !mentionsTrend && !isTopProductsQuery
+
+  const mentionsSalesByHour =
+    /gio nao|khung gio|theo gio/.test(normalized) &&
+    (mentionsRevenue || /ban|doanh thu|don hang/.test(normalized))
 
   const isRevenueSummaryQuery =
     (mentionsRevenue || mentionsProfit || isAovQuery) &&
@@ -774,6 +1012,7 @@ function classifyIntent(normalized) {
     mentionsFuture,
     mentionsAov,
     isAovQuery,
+    mentionsSalesByHour,
     isTopProductsQuery,
     isRevenueSummaryQuery,
     mentionsProfit,
@@ -884,21 +1123,21 @@ async function runDeterministicIntent(message, latestDate, earliestDate = null) 
 
   // 4. Inventory value
   if (intent.mentionsInventoryValue) {
-    const breakdown = /danh muc|category/.test(normalized) ? 'category'
+    const breakdown = /danh muc|category|theo nhom/.test(normalized) ? 'category'
       : /nha cung cap|supplier/.test(normalized) ? 'supplier'
       : 'none'
     const args = { breakdown }
     const data = await getInventoryValue(args)
     return {
-      answer: `Giá trị tồn kho (${breakdown}): tổng ${money(data.totalValue)}, ${quantity(data.totalQty)} đơn vị.`,
+      answer: summarizeInventoryValue(data, breakdown),
       toolCalls: [{ toolName: 'getInventoryValue', args, hasData: Boolean(data.totalValue) }],
     }
   }
 
   // 5. Stock loss
   if (intent.mentionsStockLoss) {
-    const groupBy = /san pham|thuoc/.test(normalized) ? 'product'
-      : /danh muc|nhom/.test(normalized) ? 'category'
+    const groupBy = /\bnhom\b|danh muc/.test(normalized) ? 'category'
+      : /san pham|thuoc/.test(normalized) ? 'product'
       : 'month'
     const args = { startDate: range.startDate, endDate: range.endDate, groupBy }
     const data = await getStockLossSummary(args)
@@ -911,25 +1150,26 @@ async function runDeterministicIntent(message, latestDate, earliestDate = null) 
 
   // 6. Category revenue
   if (intent.mentionsCategoryRevenue) {
-    const args = { startDate: range.startDate, endDate: range.endDate, compareWith: 'prev_period' }
+    const growthFocus = /tang truong|dang tang|tot nhat/.test(normalized)
+    const categoryRange = resolveCategoryRevenueRange(range, normalized, latestDate)
+    const compareWith = /so sanh/.test(normalized) ? resolveCompareWith(categoryRange) : 'prev_period'
+    const args = { startDate: categoryRange.startDate, endDate: categoryRange.endDate, compareWith }
     const data = await getCategoryRevenue(args)
-    const lines = data.slice(0, 5).map((r, i) =>
-      `${i + 1}. ${r.categoryName}: ${money(r.revenue)} (${r.revenueChangePercent != null ? (r.revenueChangePercent > 0 ? '+' : '') + r.revenueChangePercent + '%' : 'n/a'})`
-    )
     return {
-      answer: `Doanh thu theo danh mục (${range.label}):\n${lines.join('\n')}`,
+      answer: summarizeCategoryRevenue(data, categoryRange, { growthFocus }),
       toolCalls: [{ toolName: 'getCategoryRevenue', args, hasData: data.length > 0 }],
     }
   }
 
   // 7. Trend
   if (intent.mentionsTrend) {
+    const trendRange = resolveTrendRange(range, normalized, latestDate)
     const granularity = /ngay/.test(normalized) ? 'daily' : /tuan/.test(normalized) ? 'weekly' : 'monthly'
     const metric = /don hang|so don/.test(normalized) ? 'orders' : /aov/.test(normalized) ? 'aov' : 'revenue'
-    const args = { startDate: range.startDate, endDate: range.endDate, granularity, metric }
+    const args = { startDate: trendRange.startDate, endDate: trendRange.endDate, granularity, metric }
     const data = await getSalesTrend(args)
     return {
-      answer: `Xu hướng ${metric} (${range.label}): ${data.length} điểm dữ liệu.`,
+      answer: summarizeSalesTrend(data, trendRange, metric, latestDate),
       toolCalls: [{ toolName: 'getSalesTrend', args, hasData: data.length > 0 }],
     }
   }
@@ -938,7 +1178,7 @@ async function runDeterministicIntent(message, latestDate, earliestDate = null) 
   if (intent.mentionsTopCustomer) {
     const limitMatch = normalizeText(message).match(/top\s*(\d+)/)
     const limit = limitMatch ? Math.min(+limitMatch[1], 100) : 10
-    const sortBy = /tan suat|nhieu lan|so lan/.test(normalized) ? 'frequency'
+    const sortBy = /tan suat|nhieu lan|so lan|mua nhieu/.test(normalized) ? 'frequency'
       : /aov|gia tri don/.test(normalized) ? 'aov'
       : 'revenue'
     const args = { startDate: range.startDate, endDate: range.endDate, sortBy, limit }
@@ -979,22 +1219,62 @@ async function runDeterministicIntent(message, latestDate, earliestDate = null) 
     // Đọc số lượng từ câu hỏi nếu có: "top 10", "top 5"
     const limitMatch = normalizeText(message).match(/top\s*(\d+)/)
     const limit = limitMatch ? Math.min(+limitMatch[1], 100) : 5
-    const sortBy = intent.mentionsProfit ? 'profit' : 'revenue'
+    const sortBy = /doanh thu|revenue/.test(normalized) ? 'revenue'
+      : intent.mentionsProfit ? 'profit'
+      : /ban chay|ban nhieu/.test(normalized) && intent.isProductContext && !/doanh thu/.test(normalized)
+        ? 'quantity'
+        : 'revenue'
     const args = { startDate: range.startDate, endDate: range.endDate, sortBy, limit }
     const data = await getTopProducts(args)
     return {
-      answer: summarizeTopProducts(data, range, latestDate),
+      answer: summarizeTopProducts(data, range, latestDate, { sortBy, limit }),
       toolCalls: [{ toolName: 'getTopProducts', args, hasData: data.length > 0 }],
     }
   }
 
-  // 9. Revenue / order summary
+  // 9. Sales by hour
+  if (intent.mentionsSalesByHour) {
+    let hourRange = range
+    if (range.label === 'toàn bộ dữ liệu') {
+      const ref = new Date(`${latestDate}T00:00:00.000Z`)
+      ref.setUTCDate(ref.getUTCDate() - 29)
+      hourRange = {
+        startDate: ref.toISOString().slice(0, 10),
+        endDate: latestDate,
+        label: '30 ngày gần nhất',
+      }
+    }
+
+    const start = new Date(`${hourRange.startDate}T00:00:00.000Z`)
+    const end = new Date(`${hourRange.endDate}T00:00:00.000Z`)
+    const aggregateDays = Math.max(1, Math.round((end - start) / 86400000) + 1)
+    const args = { date: hourRange.endDate, aggregateDays }
+    const data = await getSalesByHour(args)
+    const peak = [...(data || [])]
+      .filter((row) => Number(row.revenue || 0) > 0)
+      .sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0))[0]
+    const rangeLabel = hourRange.label || `${hourRange.startDate} → ${hourRange.endDate}`
+
+    return {
+      answer: peak
+        ? `Giờ bán cao nhất (${rangeLabel}): ${peak.hour}h — doanh thu ${money(peak.revenue)}, ${quantity(peak.orders)} đơn.`
+        : `Chưa có dữ liệu bán hàng theo giờ trong khoảng ${rangeLabel}.`,
+      toolCalls: [{ toolName: 'getSalesByHour', args, hasData: Boolean(peak) }],
+    }
+  }
+
+  // 10. Revenue / order summary
   if (intent.isRevenueSummaryQuery) {
     const groupBy = range.label === 'hôm nay' || range.label === 'hôm qua' ? 'day'
       : /tuan/.test(normalizeText(range.label || '')) ? 'day'
       : /thang|quy|nam/.test(normalizeText(range.label || '')) ? 'month'
       : 'day'
-    const args = { startDate: range.startDate, endDate: range.endDate, groupBy, compareWith: 'prev_period' }
+    const args = {
+      startDate: range.startDate,
+      endDate: range.endDate,
+      groupBy,
+      compareWith: resolveCompareWith(range),
+    }
     const data = await getSalesSummary(args)
     return {
       answer: summarizeSales(data, range, latestDate),

@@ -19,18 +19,84 @@ const MATRIX_SORT_EXPR = {
   currentQty: 'CurrentQty',
 }
 
-// FIX #8: Tách expression ra constant để dùng lại, không inline CASE WHEN nhiều lần trong 1 query
-const ABC_CLASS_EXPR = `CASE
-  WHEN p.abcclass LIKE N'Nhóm A%' OR p.abcclass = 'A' THEN 'A'
-  WHEN p.abcclass LIKE N'Nhóm B%' OR p.abcclass = 'B' THEN 'B'
-  ELSE 'C'
-END`
-
-const XYZ_CLASS_EXPR = `CASE
-  WHEN p.xyzclass LIKE N'Lớp X%' OR p.xyzclass = 'X' THEN 'X'
-  WHEN p.xyzclass LIKE N'Lớp Y%' OR p.xyzclass = 'Y' THEN 'Y'
-  ELSE 'Z'
-END`
+// Tính ABC/XYZ động từ doanh thu & biến động bán hàng trong kỳ (aggregate trước, tránh scan toàn Dim_Product)
+function matrixClassificationCtes() {
+  const dateFilter = dateInRange('d.FullDate', '@startDate', '@endDate')
+  return `
+    SalesAgg AS (
+      SELECT
+        fs.ProductKey,
+        ISNULL(SUM(fs.GrossRevenue), 0) AS Revenue,
+        ISNULL(SUM(fs.QuantitySold), 0) AS QuantitySold
+      FROM gold.Fact_Sales fs
+      INNER JOIN gold.Dim_Date d ON d.DateKey = fs.InvoiceDateKey
+        AND ${dateFilter}
+      GROUP BY fs.ProductKey
+    ),
+    AbcRanked AS (
+      SELECT
+        ProductKey,
+        Revenue,
+        QuantitySold,
+        SUM(Revenue) OVER() AS GlobalRevenue,
+        SUM(Revenue) OVER(
+          ORDER BY Revenue DESC, ProductKey
+          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS RunningRevenue
+      FROM SalesAgg
+    ),
+    AbcClassified AS (
+      SELECT
+        ProductKey,
+        Revenue,
+        QuantitySold,
+        CASE
+          WHEN GlobalRevenue = 0 THEN 'C'
+          WHEN (RunningRevenue * 100.0 / GlobalRevenue) <= 75 THEN 'A'
+          WHEN (RunningRevenue * 100.0 / GlobalRevenue) <= 95 THEN 'B'
+          ELSE 'C'
+        END AS AbcClass
+      FROM AbcRanked
+    ),
+    MonthlySales AS (
+      SELECT
+        fs.ProductKey,
+        YEAR(d.FullDate) AS SaleYear,
+        MONTH(d.FullDate) AS SaleMonth,
+        ISNULL(SUM(fs.QuantitySold), 0) AS MonthlyQty
+      FROM gold.Fact_Sales fs
+      INNER JOIN gold.Dim_Date d ON d.DateKey = fs.InvoiceDateKey
+        AND ${dateFilter}
+      GROUP BY fs.ProductKey, YEAR(d.FullDate), MONTH(d.FullDate)
+    ),
+    ProductCV AS (
+      SELECT
+        ProductKey,
+        AVG(CAST(MonthlyQty AS DECIMAL(18, 4))) AS AvgQty,
+        STDEV(CAST(MonthlyQty AS DECIMAL(18, 4))) AS StdevQty
+      FROM MonthlySales
+      GROUP BY ProductKey
+    ),
+    ClassifiedProducts AS (
+      SELECT
+        p.ProductKey,
+        p.ProductName,
+        p.CategoryName,
+        abc.AbcClass,
+        CASE
+          WHEN cv.AvgQty IS NULL OR cv.AvgQty = 0 THEN 'Z'
+          WHEN ISNULL(cv.StdevQty, 0) = 0 THEN 'X'
+          WHEN (cv.StdevQty / cv.AvgQty) * 100.0 <= 20.0 THEN 'X'
+          WHEN (cv.StdevQty / cv.AvgQty) * 100.0 <= 50.0 THEN 'Y'
+          ELSE 'Z'
+        END AS XyzClass,
+        abc.Revenue,
+        abc.QuantitySold
+      FROM AbcClassified abc
+      INNER JOIN gold.Dim_Product p ON p.ProductKey = abc.ProductKey
+      LEFT JOIN ProductCV cv ON cv.ProductKey = abc.ProductKey
+    )`
+}
 
 function num(value) {
   if (value === null || value === undefined) return 0
@@ -60,10 +126,54 @@ function previousRange(startDate, endDate) {
   return { prevStart, prevEnd }
 }
 
+function previousMonthSameSpan(startDate, endDate) {
+  const start = new Date(`${startDate}T00:00:00.000Z`)
+  const end = new Date(`${endDate}T00:00:00.000Z`)
+  const prevStart = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - 1, start.getUTCDate()))
+  const prevEnd = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 1, end.getUTCDate()))
+  return {
+    prevStart: prevStart.toISOString().slice(0, 10),
+    prevEnd: prevEnd.toISOString().slice(0, 10),
+  }
+}
+
+function previousWeekSameSpan(startDate, endDate) {
+  return {
+    prevStart: dateAdd(startDate, -7),
+    prevEnd: dateAdd(endDate, -7),
+  }
+}
+
+function previousQuarterSameSpan(startDate, endDate) {
+  const start = new Date(`${startDate}T00:00:00.000Z`)
+  const end = new Date(`${endDate}T00:00:00.000Z`)
+  const prevStart = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - 3, start.getUTCDate()))
+  const prevEnd = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 3, end.getUTCDate()))
+  return {
+    prevStart: prevStart.toISOString().slice(0, 10),
+    prevEnd: prevEnd.toISOString().slice(0, 10),
+  }
+}
+
 function yearRange(startDate, endDate) {
   return {
     prevStart: dateAdd(startDate, -365),
     prevEnd: dateAdd(endDate, -365),
+  }
+}
+
+function resolveCompareRange(startDate, endDate, compareWith = 'prev_period') {
+  switch (compareWith) {
+    case 'prev_year':
+      return yearRange(startDate, endDate)
+    case 'prev_month':
+      return previousMonthSameSpan(startDate, endDate)
+    case 'prev_week':
+      return previousWeekSameSpan(startDate, endDate)
+    case 'prev_quarter':
+      return previousQuarterSameSpan(startDate, endDate)
+    default:
+      return previousRange(startDate, endDate)
   }
 }
 
@@ -115,9 +225,7 @@ async function salesTotals(startDate, endDate) {
 
 export async function getSalesSummary({ startDate, endDate, groupBy = 'day', compareWith = 'prev_period' }) {
   const current = await salesTotals(startDate, endDate)
-  const compareRange = compareWith === 'prev_year'
-    ? yearRange(startDate, endDate)
-    : previousRange(startDate, endDate)
+  const compareRange = resolveCompareRange(startDate, endDate, compareWith)
   const previous = await salesTotals(compareRange.prevStart, compareRange.prevEnd)
   const periodExpr = periodExpression(groupBy)
 
@@ -700,27 +808,7 @@ export async function forecastRevenue({ forecastDays = 30, model = 'linear' }) {
 
 export async function getMatrixDistribution({ startDate, endDate, includeInventoryValue = true }) {
   const rows = await query(
-    `WITH SalesInPeriod AS (
-       SELECT
-         p.ProductKey,
-         ISNULL(SUM(fs.GrossRevenue), 0) AS Revenue,
-         ISNULL(SUM(fs.QuantitySold), 0) AS QuantitySold
-       FROM gold.Fact_Sales fs
-       JOIN gold.Dim_Date d ON d.DateKey = fs.InvoiceDateKey
-       JOIN gold.Dim_Product p ON p.ProductKey = fs.ProductKey
-       WHERE ${dateInRange('d.FullDate', '@startDate', '@endDate')}
-       GROUP BY p.ProductKey
-     ),
-     ProductMetrics AS (
-       SELECT
-         p.ProductKey,
-         ${ABC_CLASS_EXPR} AS AbcClass,
-         ${XYZ_CLASS_EXPR} AS XyzClass,
-         ISNULL(sip.Revenue, 0) AS Revenue,
-         ISNULL(sip.QuantitySold, 0) AS QuantitySold
-       FROM gold.Dim_Product p
-       LEFT JOIN SalesInPeriod sip ON sip.ProductKey = p.ProductKey
-     ),
+    `WITH ${matrixClassificationCtes()},
      Inventory AS (
        SELECT ProductKey, ISNULL(SUM(CurrentQty * ImportPrice), 0) AS InventoryValue
        FROM gold.Fact_Inventory_Snapshot
@@ -728,16 +816,16 @@ export async function getMatrixDistribution({ startDate, endDate, includeInvento
        GROUP BY ProductKey
      )
      SELECT
-       pm.AbcClass,
-       pm.XyzClass,
+       cp.AbcClass,
+       cp.XyzClass,
        COUNT(*) AS ProductCount,
-       ISNULL(SUM(pm.Revenue), 0) AS Revenue,
-       ISNULL(SUM(pm.QuantitySold), 0) AS QuantitySold,
+       ISNULL(SUM(cp.Revenue), 0) AS Revenue,
+       ISNULL(SUM(cp.QuantitySold), 0) AS QuantitySold,
        CASE WHEN @includeInventoryValue = 1 THEN ISNULL(SUM(i.InventoryValue), 0) ELSE NULL END AS InventoryValue
-     FROM ProductMetrics pm
-     LEFT JOIN Inventory i ON i.ProductKey = pm.ProductKey
-     GROUP BY pm.AbcClass, pm.XyzClass
-     ORDER BY pm.AbcClass, pm.XyzClass`,
+     FROM ClassifiedProducts cp
+     LEFT JOIN Inventory i ON i.ProductKey = cp.ProductKey
+     GROUP BY cp.AbcClass, cp.XyzClass
+     ORDER BY cp.AbcClass, cp.XyzClass`,
     { startDate, endDate, includeInventoryValue }
   )
 
@@ -778,30 +866,11 @@ export async function getProductsByMatrix({
 
   // FIX #8: Tính class trong CTE ClassifiedProducts, sau đó WHERE dùng alias đã tính sẵn
   const rows = await query(
-    `WITH ClassifiedProducts AS (
-       SELECT
-         p.ProductKey,
-         p.ProductName,
-         p.CategoryName,
-         ${ABC_CLASS_EXPR} AS AbcClass,
-         ${XYZ_CLASS_EXPR} AS XyzClass
-       FROM gold.Dim_Product p
-     ),
-     SalesInPeriod AS (
-       SELECT
-         cp.ProductKey,
-         cp.ProductName,
-         cp.CategoryName,
-         cp.AbcClass,
-         cp.XyzClass,
-         ISNULL(SUM(fs.GrossRevenue), 0) AS Revenue,
-         ISNULL(SUM(fs.QuantitySold), 0) AS QuantitySold
-       FROM ClassifiedProducts cp
-       LEFT JOIN gold.Fact_Sales fs ON fs.ProductKey = cp.ProductKey
-       LEFT JOIN gold.Dim_Date d ON d.DateKey = fs.InvoiceDateKey
-         AND ${dateInRange('d.FullDate', '@startDate', '@endDate')}
-       WHERE cp.AbcClass = @abcClass AND cp.XyzClass = @xyzClass
-       GROUP BY cp.ProductKey, cp.ProductName, cp.CategoryName, cp.AbcClass, cp.XyzClass
+    `WITH ${matrixClassificationCtes()},
+     FilteredProducts AS (
+       SELECT *
+       FROM ClassifiedProducts
+       WHERE AbcClass = @abcClass AND XyzClass = @xyzClass
      ),
      Inventory AS (
        SELECT
@@ -827,7 +896,7 @@ export async function getProductsByMatrix({
            WHEN s.QuantitySold = 0 THEN NULL
            ELSE ISNULL(i.CurrentQty, 0) / NULLIF(s.QuantitySold / CAST(@rangeDays AS DECIMAL(18, 4)), 0)
          END AS DaysOfStock
-       FROM SalesInPeriod s
+       FROM FilteredProducts s
        LEFT JOIN Inventory i ON i.ProductKey = s.ProductKey
      )
      SELECT TOP (@limit) *
